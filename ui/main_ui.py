@@ -111,12 +111,8 @@ class LoadingSpinner:
         self.is_running = True
     
     def stop(self):
-        self.is_running = False
-        self.progress.stop()
-        try:
-            self.loading_window.destroy()
-        except:
-            pass
+        if hasattr(self, 'progress') and self.progress.winfo_exists():
+            self.progress.stop()
 
 class StatisticsPopup:
     def __init__(self, parent, data, algo_result=None, algo_name=None):
@@ -541,7 +537,7 @@ class MainUI:
         algo_combo = ttk.Combobox(
             algo_frame,
             textvariable=self.algo_var,
-            values=["Naive Bayes", "KNN", "K-Means", "Decision Tree"],
+            values=["Naive Bayes", "KNN", "K-Means", "Decision Tree", "Association Rules", "Reduct"],
             state="readonly",
             font=("Segoe UI", 10),
             width=15
@@ -811,11 +807,11 @@ class MainUI:
                 self.show_notification(f"🎉 Thuật toán {algo} đã chạy thành công!", "success")
                 
                 self.root.after(500, lambda: StatisticsPopup(self.root, self.data, result, algo))
-                
-            except Exception as e:
                 spinner.stop()
-                self.result_label.config(text=f"❌ Lỗi: {str(e)}")
-                self.show_notification(f"❌ Lỗi khi chạy thuật toán: {str(e)}", "error")
+            except Exception as e:
+                print(f"Error in thread: {e}")
+                if hasattr(self, 'progress') and self.progress.winfo_exists():
+                    self.progress.stop()
         
         threading.Thread(target=run, daemon=True).start()
 
