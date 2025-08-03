@@ -30,7 +30,7 @@ def setup_treeview(main_frame):
     # Bảng hiển thị dữ liệu/kết quả
     result_tree = ttk.Treeview(
         result_frame,
-        columns=("ID", "Math", "Physics", "Chemistry", "Label", "Decision"),
+        columns=("ID", "Math", "Physics", "Chemistry", "Label"),
         show="headings",
         height=12,
         style="Treeview"
@@ -40,13 +40,14 @@ def setup_treeview(main_frame):
     result_tree.heading("Physics", text="Lý")
     result_tree.heading("Chemistry", text="Hóa")
     result_tree.heading("Label", text="Nhãn")
-    result_tree.heading("Decision", text="Quyết định")  # Thêm heading cho cột decision
     result_tree.column("ID", width=50, anchor="center")
     result_tree.column("Math", width=100, anchor="center")
     result_tree.column("Physics", width=100, anchor="center")
     result_tree.column("Chemistry", width=100, anchor="center")
     result_tree.column("Label", width=100, anchor="center")
-    result_tree.column("Decision", width=100, anchor="center")  # Thêm cột decision
+    result_tree.grid(row=0, column=0, sticky="nsew")
+    result_frame.rowconfigure(0, weight=1)
+    result_frame.columnconfigure(0, weight=1)
 
     # Thanh cuộn cho bảng
     scrollbar = ttk.Scrollbar(result_frame, orient="vertical", command=result_tree.yview)
@@ -56,32 +57,30 @@ def setup_treeview(main_frame):
     return result_tree
 
 def reset_treeview(result_tree):
-    result_tree.configure(columns=("ID", "Math", "Physics", "Chemistry", "Label", "Decision"), show="headings")
+    # Khôi phục cấu trúc cột gốc với border
+    result_tree.configure(columns=("ID", "Math", "Physics", "Chemistry", "Label"), show="headings")
     result_tree.heading("ID", text="ID")
     result_tree.heading("Math", text="Toán")
     result_tree.heading("Physics", text="Lý")
     result_tree.heading("Chemistry", text="Hóa")
     result_tree.heading("Label", text="Nhãn")
-    result_tree.heading("Decision", text="Quyết định")  # Thêm heading cho cột decision
     result_tree.column("ID", width=50, anchor="center")
     result_tree.column("Math", width=100, anchor="center")
     result_tree.column("Physics", width=100, anchor="center")
     result_tree.column("Chemistry", width=100, anchor="center")
     result_tree.column("Label", width=100, anchor="center")
-    result_tree.column("Decision", width=100, anchor="center")  # Thêm cột decision
 
 def display_data(result_tree, data, result_label):
     reset_treeview(result_tree)
     result_tree.delete(*result_tree.get_children())
-    if data is not None and all(col in data.columns for col in ["math_score", "physics_score", "chemistry_score", "label", "decision"]):  # Thêm "decision" vào kiểm tra
+    if data is not None and all(col in data.columns for col in ["math_score", "physics_score", "chemistry_score", "label"]):
         for i, row in data.head(10).iterrows():
             result_tree.insert("", "end", values=(
                 i+1,
                 row["math_score"],
                 row["physics_score"],
                 row["chemistry_score"],
-                row["label"],
-                row["decision"]  # Thêm cột decision
+                row["label"]
             ))
         result_label.config(text="Đã hiển thị dữ liệu!")
     else:
