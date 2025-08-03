@@ -111,7 +111,12 @@ class LoadingSpinner:
         self.is_running = True
     
     def stop(self):
-        self.is_running = False
+        if self.is_running:
+            self.is_running = False
+            # Dừng progress và hủy cửa sổ trong luồng chính
+            self.parent.after(0, self._safe_stop)
+
+    def _safe_stop(self):
         self.progress.stop()
         try:
             self.loading_window.destroy()
@@ -194,10 +199,10 @@ class StatisticsPopup:
         
         info_card = self.create_card(card_frame, "📋 Thông tin cơ bản", "#3498db")
         info_text = f"""
-Số lượng mẫu: {len(df)}
-Số lượng thuộc tính: {len(df.columns)}
-Kích thước dữ liệu: {df.memory_usage(deep=True).sum() / 1024:.2f} KB
-        """
+        Số lượng mẫu: {len(df)}
+        Số lượng thuộc tính: {len(df.columns)}
+        Kích thước dữ liệu: {df.memory_usage(deep=True).sum() / 1024:.2f} KB
+                """
         tk.Label(info_card, text=info_text, justify="left", bg="white", 
                 font=("Segoe UI", 10)).pack(pady=10)
         
@@ -541,7 +546,7 @@ class MainUI:
         algo_combo = ttk.Combobox(
             algo_frame,
             textvariable=self.algo_var,
-            values=["Naive Bayes", "KNN", "K-Means", "Decision Tree"],
+            values=["Naive Bayes", "KNN", "K-Means", "Decision Tree", "ID3", "Association Rules"],  # Thêm ID3
             state="readonly",
             font=("Segoe UI", 10),
             width=15
@@ -730,6 +735,7 @@ class MainUI:
         else:
             self.show_notification("⚠️ Vui lòng chạy thuật toán trước!", "error")
     
+    # Trong MainUI class, cập nhật run_algorithm_with_animation
     def run_algorithm_with_animation(self):
         def run():
             algo = self.algo_var.get()
@@ -740,6 +746,9 @@ class MainUI:
                 self.show_notification("⚠️ Vui lòng tải dữ liệu trước!", "error")
                 return
             
+            # Thêm debug để kiểm tra dữ liệu
+            print(f"Debug: Data received - shape={self.data.shape if self.data is not None else None}, columns={self.data.columns.tolist() if self.data is not None else None}")
+
             spinner = LoadingSpinner(self.root)
             try:
                 k = int(self.k_var.get()) if algo in ["KNN", "K-Means"] else 3
@@ -758,11 +767,18 @@ class MainUI:
                 result_text = [f"✅ {result['text']}"]
                 result_text.append(f"⏱️ Thời gian chạy: {result['execution_time']:.2f}s")
                 
-                if result["reduct_info"]:
+                print(f"Debug: Result received - algo={algo}, reduct_info={result['reduct_info']}, rules={result.get('rules')}")
+                # Chỉ xử lý reduct_info nếu nó tồn tại và không phải Association Rules
+                if result["reduct_info"] and algo != "Association Rules":
                     reduct_info = result["reduct_info"]
-                    result_text.append(f"Reduct Info: Giảm xuống {reduct_info['reduced_features'].shape[1]} chiều, "
-                                     f"PC1: {reduct_info['explained_variance_ratio'][0]*100:.1f}%, "
-                                     f"PC2: {reduct_info['explained_variance_ratio'][1]*100:.1f}%")
+                    if 'explained_variance_ratio' in reduct_info:
+                        result_text.append(f"Reduct Info: Giảm xuống {reduct_info['reduced_features'].shape[1]} chiều, "
+                                        f"PC1: {reduct_info['explained_variance_ratio'][0]*100:.1f}%, "
+                                        f"PC2: {reduct_info['explained_variance_ratio'][1]*100:.1f}%")
+                    else:
+                        print(f"Debug: reduct_info exists but missing expected keys: {reduct_info.keys()}")
+                else:
+                    print(f"Debug: Skipping reduct_info - algo={algo}, reduct_info={result['reduct_info']}")
                 
                 if result["confusion_matrix"] and algo != "K-Means":
                     cm = result["confusion_matrix"]
@@ -788,19 +804,50 @@ class MainUI:
                 elif algo == "K-Means":
                     self.result_tree.configure(columns=("Result",), show="headings")
                     self.result_tree.heading("Result", text="Kết quả")
-                    self.result_tree.column("Result", width=500, anchor="center")  # Tăng chiều rộng
+                    self.result_tree.column("Result", width=500, anchor="center")
                 
                     cluster_info = result["additional_info"]
                     result_text.append("Tâm cụm:")
                     for i, center in enumerate(cluster_info["cluster_centers"]):
                         result_text.append(f"Cụm {i} ({cluster_info['cluster_label_map'][i]}): "
-                                         f"Toán={center[0]:.2f}, Lý={center[1]:.2f}, Hóa={center[2]:.2f}")
+                                        f"Toán={center[0]:.2f}, Lý={center[1]:.2f}, Hóa={center[2]:.2f}")
                     result_text.append("Phân phối cụm:")
                     for cluster, count in cluster_info["cluster_distribution"].items():
                         result_text.append(f"Cụm {cluster}: {count} mẫu")
                 
+                elif algo == "Association Rules":
+                    self.result_tree.configure(columns=("Rule", "Support", "Confidence", "Lift"), show="headings")
+                    self.result_tree.heading("Rule", text="Quy tắc")
+                    self.result_tree.heading("Support", text="Hỗ trợ")
+                    self.result_tree.heading("Confidence", text="Độ tin cậy")
+                    self.result_tree.heading("Lift", text="Lift")
+                    self.result_tree.column("Rule", width=300, anchor="center")
+                    self.result_tree.column("Confidence", width=100, anchor="center")
+                    self.result_tree.column("Support", width=100, anchor="center")
+                    self.result_tree.column("Lift", width=100, anchor="center")
+                    
+                    rules = result["rules"]
+                    print(f"Debug: Processing rules - type={type(rules)}, content={rules}")
+                    if isinstance(rules, dict) and "antecedents" in rules:
+                        # Lặp qua các khóa của antecedents thay vì range
+                        for idx in rules["antecedents"].keys():
+                            ante = ", ".join(list(rules["antecedents"][idx]))
+                            cons = ", ".join(list(rules["consequents"][idx]))
+                            rule = f"{ante} => {cons}"
+                            support = rules["support"][idx]
+                            confidence = rules["confidence"][idx]
+                            lift = rules["lift"][idx]
+                            self.result_tree.insert("", "end", values=(rule, f"{support:.3f}", f"{confidence:.3f}", f"{lift:.3f}"))
+                    else:
+                        self.result_tree.insert("", "end", values=("Không có quy tắc nào", "", "", ""))
+                
                 if algo == "Decision Tree" and "feature_importance" in result["additional_info"]:
                     result_text.append("Tầm quan trọng đặc trưng (Gini Index):")
+                    for feature, importance in result["additional_info"]["feature_importance"].items():
+                        result_text.append(f"{feature}: {importance:.2f}")
+                
+                if algo == "ID3" and "feature_importance" in result["additional_info"]:
+                    result_text.append("Tầm quan trọng đặc trưng (Entropy):")
                     for feature, importance in result["additional_info"]["feature_importance"].items():
                         result_text.append(f"{feature}: {importance:.2f}")
                 
@@ -810,14 +857,111 @@ class MainUI:
                 self.result_label.config(text="\n".join(result_text))
                 self.show_notification(f"🎉 Thuật toán {algo} đã chạy thành công!", "success")
                 
-                self.root.after(500, lambda: StatisticsPopup(self.root, self.data, result, algo))
+                # Thêm debug trước khi gọi StatisticsPopup
+                print(f"Debug: Calling StatisticsPopup with algo={algo}, result={result}")
+                self.root.after(500, lambda r=result, a=algo: StatisticsPopup(self.root, self.data, r, a))
                 
             except Exception as e:
+                import traceback
+                traceback.print_exc()  # In traceback chi tiết
+                print(f"Debug: Error occurred - {str(e)}")
                 spinner.stop()
                 self.result_label.config(text=f"❌ Lỗi: {str(e)}")
                 self.show_notification(f"❌ Lỗi khi chạy thuật toán: {str(e)}", "error")
         
         threading.Thread(target=run, daemon=True).start()
+
+    # Trong StatisticsPopup class, cập nhật create_algorithm_results_tab
+    def create_algorithm_results_tab(self, parent, algo_result, algo_name, data):
+        df = pd.DataFrame(data) if isinstance(data, dict) else data
+        labels = sorted(set(df['label']))
+        
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+        fig.patch.set_facecolor('#ecf0f1')
+        plt.subplots_adjust(wspace=0.4)
+        
+        print(f"Debug: Entering create_algorithm_results_tab - algo={algo_name}, reduct_info={algo_result.get('reduct_info')}, rules={algo_result.get('rules')}")
+        
+        try:
+            if algo_result.get("confusion_matrix") and algo_name != "K-Means":
+                cm = np.array(algo_result["confusion_matrix"])
+                im = ax1.imshow(cm, cmap='Blues', aspect='auto')
+                ax1.set_title(f'Ma trận nhầm lẫn ({algo_name})', fontsize=12, fontweight='bold', color='#2c3e50')
+                ax1.set_xticks(range(len(labels)))
+                ax1.set_yticks(range(len(labels)))
+                ax1.set_xticklabels(labels, rotation=45, ha='right')
+                ax1.set_yticklabels(labels)
+                ax1.set_xlabel('Dự đoán', fontsize=10)
+                ax1.set_ylabel('Thực tế', fontsize=10)
+                for i in range(len(labels)):
+                    for j in range(len(labels)):
+                        ax1.text(j, i, f'{cm[i, j]}', ha='center', va='center', 
+                                color='white' if cm[i, j] > cm.max() / 2 else 'black')
+                fig.colorbar(im, ax=ax1, label='Số lượng')
+                ax1.set_facecolor('#ffffff')
+            
+            if algo_name == "Decision Tree" and algo_result.get("additional_info", {}).get("feature_importance"):
+                features = list(algo_result["additional_info"]["feature_importance"].keys())
+                importance = list(algo_result["additional_info"]["feature_importance"].values())
+                ax2.bar(features, importance, color='#3498db', alpha=0.7)
+                ax2.set_title('Tầm quan trọng đặc trưng (Gini Index)', fontsize=12, fontweight='bold', color='#2c3e50')
+                ax2.set_ylabel('Tầm quan trọng', fontsize=10)
+                ax2.set_facecolor('#ffffff')
+                ax2.grid(True, linestyle='--', alpha=0.7)
+            
+            elif algo_name == "K-Means" and algo_result.get("additional_info", {}).get("cluster_centers"):
+                centers = np.array(algo_result["additional_info"]["cluster_centers"])
+                for i, center in enumerate(centers):
+                    ax2.plot(['Toán', 'Lý', 'Hóa'], center, marker='o', label=f'Cụm {i} ({algo_result["additional_info"]["cluster_label_map"][i]})')
+                ax2.set_title('Tâm cụm K-Means', fontsize=12, fontweight='bold', color='#2c3e50')
+                ax2.set_ylabel('Điểm', fontsize=10)
+                ax2.set_facecolor('#ffffff')
+                ax2.legend()
+                ax2.grid(True, linestyle='--', alpha=0.7)
+            
+            else:
+                ax2.text(0.5, 0.5, 'Không có biểu đồ bổ sung', ha='center', va='center', fontsize=10)
+                ax2.set_facecolor('#ffffff')
+            
+            plt.tight_layout()
+            
+            canvas_widget = FigureCanvasTkAgg(fig, parent)
+            canvas_widget.draw()
+            canvas_widget.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
+            
+            if algo_result.get("classification_report"):
+                report_frame = tk.Frame(parent, bg="#ecf0f1")
+                report_frame.pack(fill="x", padx=10, pady=10)
+                report_text = tk.Text(report_frame, height=6, font=("Segoe UI", 10), bg="white")
+                report_text.pack(fill="x")
+                report_str = "Classification Report:\n"
+                for label in labels:
+                    report_str += f"{label}:\n"
+                    report_str += f"  Precision: {algo_result['classification_report'][label]['precision']:.2f}\n"
+                    report_str += f"  Recall: {algo_result['classification_report'][label]['recall']:.2f}\n"
+                    report_str += f"  F1-score: {algo_result['classification_report'][label]['f1-score']:.2f}\n"
+                report_text.insert("1.0", report_str)
+                report_text.configure(state="disabled")
+            
+            if algo_result.get("reduct_info"):
+                reduct_frame = tk.Frame(parent, bg="#ecf0f1")
+                reduct_frame.pack(fill="x", padx=10, pady=10)
+                reduct_text = tk.Text(reduct_frame, height=4, font=("Segoe UI", 10), bg="white")
+                reduct_text.pack(fill="x")
+                reduct_info = algo_result["reduct_info"]
+                reduct_str = "Reduct Info:\n"
+                reduct_str += f"- Số thành phần chính: {reduct_info['reduced_features'].shape[1]}\n"
+                reduct_str += f"- Tỷ lệ phương sai: PC1: {reduct_info['explained_variance_ratio'][0]*100:.1f}%, "
+                reduct_str += f"PC2: {reduct_info['explained_variance_ratio'][1]*100:.1f}%"
+                reduct_text.insert("1.0", reduct_str)
+                reduct_text.configure(state="disabled")
+            else:
+                print(f"Debug: No reduct_info available for algo={algo_name}")
+        
+        except Exception as e:
+            print(f"Debug: Error in create_algorithm_results_tab - {str(e)}")
+            import traceback
+            traceback.print_exc()
 
 if __name__ == "__main__":
     root = tk.Tk()
