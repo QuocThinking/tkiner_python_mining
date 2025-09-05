@@ -20,31 +20,20 @@ def setup_treeview(main_frame):
                     borderwidth=1)
     style.configure("Treeview.Heading",
                     background="#3498db",
-                    foreground="#2c3e50",  # Màu chữ xanh đậm, cố định
+                    foreground="#2c3e50",
                     font=("Helvetica", 12, "bold"),
                     borderwidth=1)
     style.map("Treeview.Heading",
-              background=[("active", "#2980b9")],  # Chỉ đổi nền khi hover
-              foreground=[("active", "#2c3e50")])  # Giữ màu chữ
+              background=[("active", "#2980b9")],
+              foreground=[("active", "#2c3e50")])
 
     # Bảng hiển thị dữ liệu/kết quả
     result_tree = ttk.Treeview(
         result_frame,
-        columns=("ID", "Math", "Physics", "Chemistry", "Label"),
         show="headings",
         height=12,
         style="Treeview"
     )
-    result_tree.heading("ID", text="ID")
-    result_tree.heading("Math", text="Toán")
-    result_tree.heading("Physics", text="Lý")
-    result_tree.heading("Chemistry", text="Hóa")
-    result_tree.heading("Label", text="Nhãn")
-    result_tree.column("ID", width=50, anchor="center")
-    result_tree.column("Math", width=100, anchor="center")
-    result_tree.column("Physics", width=100, anchor="center")
-    result_tree.column("Chemistry", width=100, anchor="center")
-    result_tree.column("Label", width=100, anchor="center")
     result_tree.grid(row=0, column=0, sticky="nsew")
     result_frame.rowconfigure(0, weight=1)
     result_frame.columnconfigure(0, weight=1)
@@ -57,31 +46,34 @@ def setup_treeview(main_frame):
     return result_tree
 
 def reset_treeview(result_tree):
-    # Khôi phục cấu trúc cột gốc với border
-    result_tree.configure(columns=("ID", "Math", "Physics", "Chemistry", "Label"), show="headings")
-    result_tree.heading("ID", text="ID")
-    result_tree.heading("Math", text="Toán")
-    result_tree.heading("Physics", text="Lý")
-    result_tree.heading("Chemistry", text="Hóa")
-    result_tree.heading("Label", text="Nhãn")
-    result_tree.column("ID", width=50, anchor="center")
-    result_tree.column("Math", width=100, anchor="center")
-    result_tree.column("Physics", width=100, anchor="center")
-    result_tree.column("Chemistry", width=100, anchor="center")
-    result_tree.column("Label", width=100, anchor="center")
+    result_tree.delete(*result_tree.get_children())
 
 def display_data(result_tree, data, result_label):
-    reset_treeview(result_tree)
-    result_tree.delete(*result_tree.get_children())
-    if data is not None and all(col in data.columns for col in ["math_score", "physics_score", "chemistry_score", "label"]):
-        for i, row in data.head(10).iterrows():
-            result_tree.insert("", "end", values=(
-                i+1,
-                row["math_score"],
-                row["physics_score"],
-                row["chemistry_score"],
-                row["label"]
-            ))
-        result_label.config(text="Đã hiển thị dữ liệu!")
-    else:
+    if data is None:
         result_label.config(text="Dữ liệu không hợp lệ hoặc chưa được tải!")
+        return
+    
+    if 'label' not in data.columns:
+        result_label.config(text="CSV thiếu cột 'label'!")
+        return
+    
+    features = [col for col in data.columns if col != 'label']
+    columns = ("ID",) + tuple(features) + ("Label",)
+    result_tree.configure(columns=columns)
+    
+    result_tree.heading("ID", text="ID")
+    for feature in features:
+        result_tree.heading(feature, text=feature.capitalize())
+    result_tree.heading("Label", text="Nhãn")
+    
+    result_tree.column("ID", width=50, anchor="center")
+    for feature in features:
+        result_tree.column(feature, width=100, anchor="center")
+    result_tree.column("Label", width=100, anchor="center")
+    
+    result_tree.delete(*result_tree.get_children())
+    for i, row in data.head(10).iterrows():
+        values = (i+1,) + tuple(row[feature] for feature in features) + (row["label"],)
+        result_tree.insert("", "end", values=values)
+    
+    result_label.config(text="Đã hiển thị dữ liệu!")

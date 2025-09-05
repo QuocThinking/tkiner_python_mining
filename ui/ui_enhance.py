@@ -1,89 +1,118 @@
 import tkinter as tk
 from tkinter import ttk
-import ttkbootstrap as ttkb
-from ttkbootstrap.tooltip import ToolTip
 
-from table_manager import setup_treeview
+def setup_ui(main_frame, algo_var, k_var):
+    # Frame chính, không dùng configure mà để padding trong grid
+    control_frame = tk.Frame(main_frame, bg="#e3e8ee")
+    control_frame.grid(row=1, column=0, columnspan=2, padx=20, pady=20, sticky="ew")
+    control_frame.columnconfigure((0, 1), weight=1)
 
-def setup_enhanced_ui(self):
-    control_frame = ttkb.Frame(self.main_frame, padding=10)
-    control_frame.grid(row=2, column=0, sticky="ew")  # Nhường row 0,1 cho status và info
-    control_frame.columnconfigure(0, weight=1)
-    control_frame.columnconfigure(1, weight=1)
-    control_frame.columnconfigure(2, weight=1)
-
-    self.load_db_button = ttkb.Button(
-        control_frame,
-        text="Tải từ DB",
-        command=self.load_data_from_db,
-        bootstyle="primary",
-        width=15
+    # Tiêu đề
+    title_label = tk.Label(
+        main_frame,
+        text="Công Cụ Khai Phá Dữ Liệu",
+        font=("Helvetica", 20, "bold"),
+        bg="#e3e8ee",
+        fg="#2c3e50"
     )
-    self.load_db_button.grid(row=0, column=0, padx=5, pady=5)
-    ToolTip(self.load_db_button, text="Tải dữ liệu từ cơ sở dữ liệu")
-    self.load_db_button.bind("<Enter>", lambda e: self.load_db_button.configure(bootstyle="primary-outline"))
-    self.load_db_button.bind("<Leave>", lambda e: self.load_db_button.configure(bootstyle="primary"))
+    title_label.grid(row=0, column=0, columnspan=2, pady=20, sticky="ew")
 
-    self.load_csv_button = ttkb.Button(
+    # Chọn thuật toán
+    algo_label = tk.Label(
         control_frame,
-        text="Tải từ CSV",
-        command=self.load_data_from_csv,
-        bootstyle="secondary",
-        width=15
+        text="Chọn thuật toán:",
+        font=("Helvetica", 12),
+        bg="#e3e8ee",
+        fg="#2c3e50"
     )
-    self.load_csv_button.grid(row=0, column=1, padx=5, pady=5)
-    ToolTip(self.load_csv_button, text="Tải dữ liệu từ file CSV")
-    self.load_csv_button.bind("<Enter>", lambda e: self.load_csv_button.configure(bootstyle="secondary-outline"))
-    self.load_csv_button.bind("<Leave>", lambda e: self.load_csv_button.configure(bootstyle="secondary"))
+    algo_label.grid(row=0, column=0, columnspan=2, pady=5, sticky="ew")
 
-    algo_frame = ttkb.Frame(control_frame)
-    algo_frame.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
-    ttkb.Label(algo_frame, text="Thuật toán:", font=("Helvetica", 10, "bold"), bootstyle="light").pack(side="left")
-    algo_options = ["Naive Bayes", "KNN", "K-Means"]
-    algo_combo = ttkb.Combobox(
-        algo_frame,
-        textvariable=self.algo_var,
-        values=algo_options,
+    style = ttk.Style()
+    style.configure("TCombobox", 
+                   fieldbackground="#ffffff",
+                   background="#e3e8ee",
+                   foreground="#2c3e50",
+                   arrowcolor="#3498db")
+    style.map("TCombobox", 
+             fieldbackground=[("readonly", "#ffffff"), ("active", "#e3e8ee")],
+             selectbackground=[("readonly", "#ffffff")],
+             selectforeground=[("readonly", "#2c3e50")])
+
+    algo_combobox = ttk.Combobox(
+        control_frame,
+        textvariable=algo_var,
+        values=["Naive Bayes", "KNN", "K-Means", "Decision Tree", "Association Rules"],
         state="readonly",
-        width=15,
-        bootstyle="info"
+        width=20,
+        style="TCombobox"
     )
-    algo_combo.pack(side="left", padx=5)
-    ToolTip(algo_combo, text="Chọn thuật toán để chạy")
+    algo_combobox.set("Naive Bayes")
+    algo_combobox.grid(row=1, column=0, columnspan=2, pady=5, sticky="ew")
 
-    k_frame = ttkb.Frame(control_frame)
-    k_frame.grid(row=0, column=3, padx=5, pady=5, sticky="ew")
-    ttkb.Label(k_frame, text="K (KNN):", font=("Helvetica", 10, "bold"), bootstyle="light").pack(side="left")
-    k_entry = ttkb.Entry(k_frame, textvariable=self.k_var, width=5, bootstyle="info")
-    k_entry.pack(side="left", padx=5)
-    ToolTip(k_entry, text="Số lượng láng giềng cho KNN")
-
-    self.run_button = ttkb.Button(
+    # Nhập tham số K cho KNN
+    k_label = tk.Label(
         control_frame,
-        text="Chạy thuật toán",
-        command=self.run_algorithm,
-        bootstyle="success",
-        width=15
+        text="Nhập K (chỉ cho KNN):",
+        font=("Helvetica", 12),
+        bg="#e3e8ee",
+        fg="#2c3e50"
     )
-    self.run_button.grid(row=0, column=4, padx=5, pady=5)
-    ToolTip(self.run_button, text="Chạy thuật toán đã chọn")
-    self.run_button.bind("<Enter>", lambda e: self.run_button.configure(bootstyle="success-outline"))
-    self.run_button.bind("<Leave>", lambda e: self.run_button.configure(bootstyle="success"))
+    k_label.grid(row=2, column=0, columnspan=2, pady=5, sticky="ew")
 
-    self.back_button = ttkb.Button(
+    k_entry = tk.Entry(
         control_frame,
-        text="Quay lại",
-        command=self.display_data,
-        bootstyle="danger",
-        width=15
+        textvariable=k_var,
+        width=10,
+        font=("Helvetica", 12)
     )
-    self.back_button.grid(row=0, column=5, padx=5, pady=5)
-    ToolTip(self.back_button, text="Hiển thị lại dữ liệu gốc")
-    self.back_button.bind("<Enter>", lambda e: self.back_button.configure(bootstyle="danger-outline"))
-    self.back_button.bind("<Leave>", lambda e: self.back_button.configure(bootstyle="danger"))
+    k_entry.grid(row=3, column=0, columnspan=2, pady=5, sticky="ew")
 
-    self.result_tree = setup_treeview(self.main_frame)
-    self.result_tree.grid(row=4, column=0, pady=(15, 10), sticky="nsew")
-    scrollbar = ttkb.Scrollbar(self.main_frame, orient="vertical", command=self.result_tree.yview, bootstyle="round")
-    scrollbar.grid(row=4, column=1, sticky="ns")
-    self.result_tree.configure(yscrollcommand=scrollbar.set)
+    # Nút chọn file CSV
+    load_csv_button = tk.Button(
+        control_frame,
+        text="Chọn File CSV",
+        font=("Helvetica", 12),
+        bg="#3498db",
+        fg="white",
+        activebackground="#2980b9",
+        activeforeground="white",
+        borderwidth=4,
+        relief="raised"
+    )
+    load_csv_button.grid(row=4, column=0, padx=10, pady=10, sticky="ew")
+    load_csv_button.bind("<Enter>", lambda e: load_csv_button.config(bg="#2980b9"))
+    load_csv_button.bind("<Leave>", lambda e: load_csv_button.config(bg="#3498db"))
+
+    # Nút chạy thuật toán
+    run_button = tk.Button(
+        control_frame,
+        text="Chạy Thuật Toán",
+        font=("Helvetica", 12),
+        bg="#3498db",
+        fg="white",
+        activebackground="#2980b9",
+        activeforeground="white",
+        borderwidth=4,
+        relief="raised"
+    )
+    run_button.grid(row=5, column=0, padx=10, pady=10, sticky="ew")
+    run_button.bind("<Enter>", lambda e: run_button.config(bg="#2980b9"))
+    run_button.bind("<Leave>", lambda e: run_button.config(bg="#3498db"))
+
+    # Nút quay lại xem dữ liệu
+    back_button = tk.Button(
+        control_frame,
+        text="Quay Lại Xem Dữ Liệu",
+        font=("Helvetica", 12),
+        bg="#3498db",
+        fg="white",
+        activebackground="#2980b9",
+        activeforeground="white",
+        borderwidth=4,
+        relief="raised"
+    )
+    back_button.grid(row=5, column=1, padx=10, pady=10, sticky="ew")
+    back_button.bind("<Enter>", lambda e: back_button.config(bg="#2980b9"))
+    back_button.bind("<Leave>", lambda e: back_button.config(bg="#3498db"))
+
+    return load_csv_button, run_button, back_button

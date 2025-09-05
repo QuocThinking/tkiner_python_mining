@@ -1,11 +1,12 @@
-from database import load_data_from_db as db_load, load_data_from_csv as csv_load
 from tkinter import filedialog
-
-def load_data_from_db():
-    return db_load()
+import pandas as pd
 
 def load_data_from_csv():
     file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
     if file_path:
-        return csv_load(file_path)
+        try:
+            data = pd.read_csv(file_path)
+            return data, None
+        except Exception as e:
+            return None, f"Lỗi khi đọc CSV: {str(e)}"
     return None, "Không chọn file CSV!"
