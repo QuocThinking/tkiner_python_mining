@@ -504,7 +504,7 @@ class MainUI:
             bg="#34495e"
         )
         subtitle_label.pack()
-    
+
     def setup_enhanced_ui(self):
         control_frame = tk.LabelFrame(
             self.main_frame, 
@@ -515,23 +515,8 @@ class MainUI:
             relief="solid",
             bd=1
         )
-        control_frame.grid(row=1, column=0, sticky="ew", padx=30, pady=15)  # Tăng padding
-        control_frame.columnconfigure((0, 1, 2, 3, 4), weight=1)
-        
-        self.load_db_button = tk.Button(
-            control_frame,
-            text="📊 Tải từ Database",
-            font=("Segoe UI", 11, "bold"),
-            bg="#3498db",
-            fg="white",
-            relief="flat",
-            bd=0,
-            padx=25,  # Tăng padding
-            pady=15,  # Tăng padding
-            cursor="hand2",
-            command=self.load_data_from_db_with_animation
-        )
-        self.load_db_button.grid(row=0, column=0, padx=15, pady=15, sticky="ew")
+        control_frame.grid(row=1, column=0, sticky="ew", padx=50, pady=20)  # Tăng padx để căn giữa
+        control_frame.columnconfigure((0, 1, 2, 3), weight=1)  # 4 cột cho 4 button
         
         self.load_csv_button = tk.Button(
             control_frame,
@@ -541,22 +526,67 @@ class MainUI:
             fg="white",
             relief="flat",
             bd=0,
-            padx=25,  # Tăng padding
-            pady=15,  # Tăng padding
+            padx=20,
+            pady=15,
             cursor="hand2",
             command=self.load_data_from_csv_with_animation
         )
-        self.load_csv_button.grid(row=0, column=1, padx=15, pady=15, sticky="ew")
+        self.load_csv_button.grid(row=0, column=0, padx=10, pady=15, sticky="ew")
+        
+        self.run_button = tk.Button(
+            control_frame,
+            text="🚀 Chạy thuật toán",
+            font=("Segoe UI", 11, "bold"),
+            bg="#e74c3c",
+            fg="white",
+            relief="flat",
+            bd=0,
+            padx=20,
+            pady=15,
+            cursor="hand2",
+            command=self.run_algorithm_with_animation
+        )
+        self.run_button.grid(row=0, column=1, padx=10, pady=15, sticky="ew")
+        
+        self.back_button = tk.Button(
+            control_frame,
+            text="🔄 Xem dữ liệu",
+            font=("Segoe UI", 11, "bold"),
+            bg="#95a5a6",
+            fg="white",
+            relief="flat",
+            bd=0,
+            padx=20,
+            pady=15,
+            cursor="hand2",
+            command=self.display_data_with_animation
+        )
+        self.back_button.grid(row=0, column=2, padx=10, pady=15, sticky="ew")
+        
+        self.view_results_button = tk.Button(
+            control_frame,
+            text="📊 Xem kết quả thuật toán",
+            font=("Segoe UI", 11, "bold"),
+            bg="#f39c12",
+            fg="white",
+            relief="flat",
+            bd=0,
+            padx=20,
+            pady=15,
+            cursor="hand2",
+            command=self.view_algorithm_results
+        )
+        self.view_results_button.grid(row=0, column=3, padx=10, pady=15, sticky="ew")
         
         algo_frame = tk.Frame(control_frame, bg="#ecf0f1")
-        algo_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=15)
+        algo_frame.grid(row=1, column=0, columnspan=4, sticky="ew", pady=15)  # Span cả 4 cột
         
         tk.Label(algo_frame, text="🧠 Thuật toán:", font=("Segoe UI", 10, "bold"),
-                bg="#ecf0f1", fg="#2c3e50").pack(side="left", padx=(15, 5))  # Tăng padding
+                bg="#ecf0f1", fg="#2c3e50").pack(side="left", padx=(15, 5))
         algo_combo = ttk.Combobox(
             algo_frame,
             textvariable=self.algo_var,
-            values=["Naive Bayes", "KNN", "K-Means", "Decision Tree", "ID3", "Association Rules"],  # Thêm ID3
+            values=["Naive Bayes", "KNN", "K-Means", "Decision Tree", "ID3", "Association Rules"],
             state="readonly",
             font=("Segoe UI", 10),
             width=15
@@ -576,7 +606,6 @@ class MainUI:
         )
         k_entry.pack(side="left", padx=5)
         
-        # Thêm tùy chọn reduct
         reduct_check = tk.Checkbutton(
             algo_frame,
             text="Áp dụng Reduct (PCA)",
@@ -589,55 +618,10 @@ class MainUI:
         )
         reduct_check.pack(side="left", padx=15)
         
-        self.run_button = tk.Button(
-            control_frame,
-            text="🚀 Chạy thuật toán",
-            font=("Segoe UI", 11, "bold"),
-            bg="#e74c3c",
-            fg="white",
-            relief="flat",
-            bd=0,
-            padx=25,  # Tăng padding
-            pady=15,  # Tăng padding
-            cursor="hand2",
-            command=self.run_algorithm_with_animation
-        )
-        self.run_button.grid(row=0, column=2, padx=15, pady=15, sticky="ew")
-        
-        self.back_button = tk.Button(
-            control_frame,
-            text="🔄 Xem dữ liệu",
-            font=("Segoe UI", 11, "bold"),
-            bg="#95a5a6",
-            fg="white",
-            relief="flat",
-            bd=0,
-            padx=25,  # Tăng padding
-            pady=15,  # Tăng padding
-            cursor="hand2",
-            command=self.display_data_with_animation
-        )
-        self.back_button.grid(row=0, column=3, padx=15, pady=15, sticky="ew")
-        
-        self.view_results_button = tk.Button(
-            control_frame,
-            text="📊 Xem kết quả thuật toán",
-            font=("Segoe UI", 11, "bold"),
-            bg="#f39c12",
-            fg="white",
-            relief="flat",
-            bd=0,
-            padx=25,  # Tăng padding
-            pady=15,  # Tăng padding
-            cursor="hand2",
-            command=self.view_algorithm_results
-        )
-        self.view_results_button.grid(row=0, column=4, padx=15, pady=15, sticky="ew")
-        
         self.add_hover_effects()
-    
+            
     def add_hover_effects(self):
-        buttons = [self.load_db_button, self.load_csv_button, self.run_button, 
+        buttons = [self.load_csv_button, self.run_button, 
                   self.back_button, self.view_results_button]
         original_colors = ["#3498db", "#2ecc71", "#e74c3c", "#95a5a6", "#f39c12"]
         hover_colors = ["#2980b9", "#27ae60", "#c0392b", "#7f8c8d", "#e67e22"]
@@ -681,7 +665,7 @@ class MainUI:
         def animate_button(button, delay=0):
             self.root.after(delay, lambda: self.fade_in_element(button))
         
-        buttons = [self.load_db_button, self.load_csv_button, self.run_button, 
+        buttons = [self.load_csv_button, self.run_button, 
                   self.back_button, self.view_results_button]
         for i, btn in enumerate(buttons):
             animate_button(btn, i * 200)
