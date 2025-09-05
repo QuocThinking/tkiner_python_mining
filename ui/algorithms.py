@@ -1,4 +1,3 @@
-# Thêm vào đầu file algorithms.py
 from mlxtend.frequent_patterns import apriori, association_rules
 from mlxtend.preprocessing import TransactionEncoder
 import pandas as pd
@@ -15,25 +14,21 @@ import time
 
 def run_association_rules(data, min_support=0.1, min_confidence=0.5):
     """
-    Chạy thuật toán Apriori để tìm luật kết hợp từ dữ liệu học sinh.
+    Chạy thuật toán Apriori để tìm luật kết hợp từ dữ liệu.
     
     Args:
-        data: DataFrame chứa các cột math_score, physics_score, chemistry_score, label
+        data: DataFrame chứa các cột số (features) và tùy chọn cột 'label'
         min_support: Ngưỡng hỗ trợ tối thiểu
         min_confidence: Ngưỡng độ tin cậy tối thiểu
     
     Returns:
         dict: Kết quả bao gồm luật kết hợp và các chỉ số thống kê
     """
-    # Thay required_columns bằng dynamic detection
-    if 'label' not in data.columns:
-        raise ValueError("Dữ liệu thiếu cột 'label'")
-    features = [col for col in data.columns if col != 'label' and pd.api.types.is_numeric_dtype(data[col])]
+    features = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
     if len(features) == 0:
         raise ValueError("Không có cột features số nào")
     
-    required_columns = features + ["label"]
-    if data[required_columns].isnull().any().any():
+    if data[features].isnull().any().any():
         raise ValueError("Dữ liệu chứa giá trị null")
     
     if len(data) == 0:
@@ -41,7 +36,6 @@ def run_association_rules(data, min_support=0.1, min_confidence=0.5):
     
     print(f"Debug: Running Association Rules with data shape={data.shape}, features={features}")
     
-    # Chuyển đổi dữ liệu thành giao dịch (generic cho mọi features)
     def discretize_scores(score):
         if score < 5:
             return "<5"
@@ -51,32 +45,29 @@ def run_association_rules(data, min_support=0.1, min_confidence=0.5):
             return ">8"
     
     transactions = []
+    has_label = 'label' in data.columns
     for _, row in data.iterrows():
         transaction = [f"{col}_{discretize_scores(row[col])}" for col in features]
-        transaction.append(f"Label_{row['label']}")
+        if has_label:
+            transaction.append(f"Label_{row['label']}")
         transactions.append(transaction)
     
-    # Mã hóa giao dịch
     te = TransactionEncoder()
     te_ary = te.fit(transactions).transform(transactions)
     df_encoded = pd.DataFrame(te_ary, columns=te.columns_)
     
-    # Tìm tập phổ biến
     frequent_itemsets = apriori(df_encoded, min_support=min_support, use_colnames=True)
     if frequent_itemsets.empty:
         raise ValueError("Không tìm thấy tập phổ biến với ngưỡng hỗ trợ hiện tại")
     
-    # Tạo luật kết hợp
     rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=min_confidence)
-    
-    # Sắp xếp và lấy top 5 quy tắc (nếu có)
     rules = rules.sort_values(by="confidence", ascending=False).head(5)
     
-    start_time = time.time()  # Bắt đầu đo thời gian
+    start_time = time.time()
     result = {
         "text": f"Association Rules - Tìm {len(rules)} quy tắc với min_support={min_support}, min_confidence={min_confidence}",
-        "rules": rules.to_dict() if not rules.empty else "Không tìm thấy quy tắc nào",
-        "execution_time": time.time() - start_time  # Tính thời gian thực tế
+        "rules": rules.to_dict() if not rules.empty else "Không có quy tắc nào",
+        "execution_time": time.time() - start_time
     }
 
     print(f"Debug: Frequent itemsets found: {len(frequent_itemsets)}")
@@ -84,126 +75,131 @@ def run_association_rules(data, min_support=0.1, min_confidence=0.5):
     
     return result
 
-# Cập nhật hàm run_algorithm để hỗ trợ "Association Rules"
-# Trong algorithms.py, cập nhật run_algorithm
 def run_algorithm(data, algo, k=3, use_reduct=False, n_components=2):
     """
-    Chạy thuật toán phân loại, phân cụm hoặc luật kết hợp trên dữ liệu học sinh.
+    Chạy thuật toán phân loại, phân cụm hoặc luật kết hợp trên dữ liệu.
     
     Args:
-        data: DataFrame chứa các cột math_score, physics_score, chemistry_score, label
-        algo: Tên thuật toán ("Naive Bayes", "KNN", "K-Means", "Decision Tree", "Association Rules")
+        data: DataFrame chứa các cột số (features) và tùy chọn cột 'label'
+        algo: Tên thuật toán ("Naive Bayes", "KNN", "K-Means", "Decision Tree", "ID3", "Association Rules")
         k: Số láng giềng (KNN) hoặc số cụm (K-Means)
         use_reduct: Boolean, áp dụng giảm chiều dữ liệu bằng PCA nếu True
+        n_components: Số thành phần chính khi giảm chiều
     
     Returns:
         dict: Kết quả bao gồm text, confusion_matrix (nếu có), và các chỉ số bổ sung
     """
-    if 'label' not in data.columns:
-        raise ValueError("Dữ liệu thiếu cột 'label'")
-    features = [col for col in data.columns if col != 'label' and pd.api.types.is_numeric_dtype(data[col])]
+    features = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
     if len(features) == 0:
         raise ValueError("Không có cột features số nào")
     
-    required_columns = features + ["label"]
-    if data[required_columns].isnull().any().any():
+    if data[features].isnull().any().any():
         raise ValueError("Dữ liệu chứa giá trị null")
     
-    valid_labels = {"Giỏi", "Trung bình", "Yếu"}
-    if not set(data["label"]).issubset(valid_labels):
-        raise ValueError("Nhãn không hợp lệ, chỉ chấp nhận: Giỏi, Trung bình, Yếu")
+    has_label = 'label' in data.columns
+    if algo in ["Naive Bayes", "KNN", "Decision Tree", "ID3"] and not has_label:
+        raise ValueError(f"Thuật toán {algo} yêu cầu cột 'label'")
     
-    # Chuẩn bị dữ liệu
     X = data[features].values
-    y = data["label"].values
+    y = data["label"].values if has_label else None
     
-    # Chuẩn hóa dữ liệu
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
-    # Áp dụng reduct
     if use_reduct and algo != "Association Rules":
-        if n_components is None or n_components <= 0:
-            raise ValueError("Số thành phần PCA phải là số nguyên dương")
-        n_components = min(n_components, X_scaled.shape[1])  # Tránh error nếu n_components > num_features
+        n_components = min(n_components, X_scaled.shape[1])
         pca = PCA(n_components=n_components)
         X_scaled = pca.fit_transform(X_scaled)
         reduct_info = {
             "reduced_features": X_scaled,
             "explained_variance_ratio": pca.explained_variance_ratio_
         }
-        print(f"Debug: reduct_info created - use_reduct={use_reduct}, algo={algo}, n_components={n_components}, reduct_info={reduct_info}")
+        print(f"Debug: reduct_info created - use_reduct={use_reduct}, algo={algo}, n_components={n_components}")
     else:
         reduct_info = None
         print(f"Debug: reduct_info is None - use_reduct={use_reduct}, algo={algo}")
     
-    # Chia dữ liệu
-    X_train, X_test, y_train, y_test = train_test_split(X_scaled if use_reduct else X, y, test_size=0.2, random_state=42)
-    
     start_time = time.time()
     result = {"reduct_info": reduct_info}
     
-    if algo == "Naive Bayes":
-        model = GaussianNB()
-        model.fit(X_train, y_train)
+    if algo in ["Naive Bayes", "KNN", "Decision Tree", "ID3"]:
+        X_train, X_test, y_train, y_test = train_test_split(X_scaled if use_reduct else X, y, test_size=0.2, random_state=42)
         
-        # Dự đoán và đánh giá
-        y_train_pred = model.predict(X_train)
-        y_test_pred = model.predict(X_test)
+        if algo == "Naive Bayes":
+            model = GaussianNB()
+            model.fit(X_train, y_train)
+            y_train_pred = model.predict(X_train)
+            y_test_pred = model.predict(X_test)
+            train_accuracy = accuracy_score(y_train, y_train_pred)
+            test_accuracy = accuracy_score(y_test, y_test_pred)
+            cm = confusion_matrix(y_test, y_test_pred)
+            report = classification_report(y_test, y_test_pred, output_dict=True)
+            result.update({
+                "text": f"Naive Bayes - Train Accuracy: {train_accuracy:.2f}, Test Accuracy: {test_accuracy:.2f}",
+                "confusion_matrix": cm.tolist(),
+                "classification_report": report,
+                "train_accuracy": train_accuracy,
+                "test_accuracy": test_accuracy
+            })
         
-        train_accuracy = accuracy_score(y_train, y_train_pred)
-        test_accuracy = accuracy_score(y_test, y_test_pred)
-        cm = confusion_matrix(y_test, y_test_pred)
-        report = classification_report(y_test, y_test_pred, output_dict=True)
+        elif algo == "KNN":
+            if k <= 0:
+                raise ValueError("k phải là số nguyên dương")
+            model = KNeighborsClassifier(n_neighbors=k)
+            model.fit(X_train, y_train)
+            y_train_pred = model.predict(X_train)
+            y_test_pred = model.predict(X_test)
+            train_accuracy = accuracy_score(y_train, y_train_pred)
+            test_accuracy = accuracy_score(y_test, y_test_pred)
+            cm = confusion_matrix(y_test, y_test_pred)
+            report = classification_report(y_test, y_test_pred, output_dict=True)
+            result.update({
+                "text": f"KNN (k={k}) - Train Accuracy: {train_accuracy:.2f}, Test Accuracy: {test_accuracy:.2f}",
+                "confusion_matrix": cm.tolist(),
+                "classification_report": report,
+                "train_accuracy": train_accuracy,
+                "test_accuracy": test_accuracy
+            })
         
-        result.update({
-            "text": f"Naive Bayes - Train Accuracy: {train_accuracy:.2f}, Test Accuracy: {test_accuracy:.2f}",
-            "confusion_matrix": cm.tolist(),
-            "classification_report": report,
-            "train_accuracy": train_accuracy,
-            "test_accuracy": test_accuracy
-        })
-    
-    elif algo == "KNN":
-        if k <= 0:
-            raise ValueError("k phải là số nguyên dương")
-        model = KNeighborsClassifier(n_neighbors=k)
-        model.fit(X_train, y_train)
-        
-        # Dự đoán và đánh giá
-        y_train_pred = model.predict(X_train)
-        y_test_pred = model.predict(X_test)
-        
-        train_accuracy = accuracy_score(y_train, y_train_pred)
-        test_accuracy = accuracy_score(y_test, y_test_pred)
-        cm = confusion_matrix(y_test, y_test_pred)
-        report = classification_report(y_test, y_test_pred, output_dict=True)
-        
-        result.update({
-            "text": f"KNN (k={k}) - Train Accuracy: {train_accuracy:.2f}, Test Accuracy: {test_accuracy:.2f}",
-            "confusion_matrix": cm.tolist(),
-            "classification_report": report,
-            "train_accuracy": train_accuracy,
-            "test_accuracy": test_accuracy
-        })
+        elif algo in ["Decision Tree", "ID3"]:
+            criterion = 'entropy' if algo == "ID3" else 'gini'
+            model = DecisionTreeClassifier(random_state=42, max_depth=5, criterion=criterion)
+            model.fit(X_train, y_train)
+            y_train_pred = model.predict(X_train)
+            y_test_pred = model.predict(X_test)
+            train_accuracy = accuracy_score(y_train, y_train_pred)
+            test_accuracy = accuracy_score(y_test, y_test_pred)
+            cm = confusion_matrix(y_test, y_test_pred)
+            report = classification_report(y_test, y_test_pred, output_dict=True)
+            feature_names = features if not use_reduct else [f"PC{i+1}" for i in range(n_components)]
+            feature_importance = dict(zip(feature_names, model.feature_importances_.tolist()))
+            result.update({
+                "text": f"{algo} - Train Accuracy: {train_accuracy:.2f}, Test Accuracy: {test_accuracy:.2f}",
+                "confusion_matrix": cm.tolist(),
+                "classification_report": report,
+                "train_accuracy": train_accuracy,
+                "test_accuracy": test_accuracy,
+                "additional_info": {"feature_importance": feature_importance}
+            })
     
     elif algo == "K-Means":
         if k <= 0:
             raise ValueError("k phải là số nguyên dương")
         model = KMeans(n_clusters=k, random_state=42)
         model.fit(X_scaled if use_reduct else X)
-        
         labels = model.labels_
         silhouette = silhouette_score(X_scaled if use_reduct else X, labels) if len(set(labels)) > 1 else 0.0
         cluster_centers = model.cluster_centers_.tolist()
         
-        # Ánh xạ cụm với nhãn gốc
         cluster_label_map = {}
-        for cluster in range(k):
-            cluster_mask = labels == cluster
-            if cluster_mask.sum() > 0:
-                most_common_label = pd.Series(y[cluster_mask]).mode()[0]
-                cluster_label_map[cluster] = most_common_label
+        if has_label:
+            for cluster in range(k):
+                cluster_mask = labels == cluster
+                if cluster_mask.sum() > 0:
+                    most_common_label = pd.Series(y[cluster_mask]).mode()[0]
+                    cluster_label_map[cluster] = most_common_label
+        else:
+            cluster_label_map = {i: f"Cluster {i}" for i in range(k)}
         
         result.update({
             "text": f"K-Means (k={k}) - Silhouette Score: {silhouette:.2f}",
@@ -215,42 +211,13 @@ def run_algorithm(data, algo, k=3, use_reduct=False, n_components=2):
             }
         })
     
-    elif algo in ["Decision Tree", "ID3"]:
-        criterion = 'entropy' if algo == "ID3" else 'gini'
-        model = DecisionTreeClassifier(random_state=42, max_depth=5, criterion=criterion)
-        model.fit(X_train, y_train)
-        
-        # Dự đoán và đánh giá
-        y_train_pred = model.predict(X_train)
-        y_test_pred = model.predict(X_test)
-        
-        train_accuracy = accuracy_score(y_train, y_train_pred)
-        test_accuracy = accuracy_score(y_test, y_test_pred)
-        cm = confusion_matrix(y_test, y_test_pred)
-        report = classification_report(y_test, y_test_pred, output_dict=True)
-        
-        # Tầm quan trọng đặc trưng
-        feature_names = features if not use_reduct else [f"PC{i+1}" for i in range(n_components)]
-        feature_importance = dict(zip(feature_names, model.feature_importances_.tolist()))
-        
-        result.update({
-            "text": f"{algo} - Train Accuracy: {train_accuracy:.2f}, Test Accuracy: {test_accuracy:.2f}",
-            "confusion_matrix": cm.tolist(),
-            "classification_report": report,
-            "train_accuracy": train_accuracy,
-            "test_accuracy": test_accuracy,
-            "additional_info": {"feature_importance": feature_importance}
-        })
-    
     elif algo == "Association Rules":
         temp_result = run_association_rules(data, min_support=0.1, min_confidence=0.5)
-        result.update(temp_result)  # Cập nhật result thay vì gán trực tiếp
-        
+        result.update(temp_result)
+    
     else:
         raise ValueError(f"Thuật toán {algo} không được hỗ trợ")
     
-    # Đặt print ở đây, sau khi result đã được gán
     print(f"Debug: Final result for algo={algo}, reduct_info={result['reduct_info']}")
-    
     result["execution_time"] = time.time() - start_time
     return result

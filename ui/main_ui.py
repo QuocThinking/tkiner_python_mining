@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+from matplotlib import cm
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import pandas as pd
@@ -246,58 +247,76 @@ class StatisticsPopup:
     
     def create_charts_tab(self, parent, data):
         try:
-            if 'label' not in data.columns:
-                raise ValueError("No 'label' column")
             df = pd.DataFrame(data) if isinstance(data, dict) else data
-            features = [col for col in df.columns if col != 'label' and pd.api.types.is_numeric_dtype(df[col])]
+            features = [col for col in df.columns if pd.api.types.is_numeric_dtype(df[col])]
             if len(features) == 0:
                 raise ValueError("No numeric feature columns found")
-            labels = sorted(set(df['label']))
+            has_label = 'label' in df.columns
+            labels = sorted(set(df['label'])) if has_label else []
             
-            # Tạo layout động dựa trên số lượng features
+            # Tạo palette màu động
+            if has_label:
+                num_labels = len(labels)
+                color_map = cm.get_cmap('tab20', max(num_labels, 10))  # Dùng tab20, tối đa 20 màu
+                colors = {label: color_map(i / num_labels) for i, label in enumerate(labels)}
+            else:
+                colors = {'default': '#3498db'}  # Màu mặc định nếu không có label
+            
+            # Layout động cho boxplot
             num_features = len(features)
-            num_rows = (num_features + 1) // 2  # 2 biểu đồ mỗi hàng
+            num_rows = (num_features + 1) // 2  # 2 cột mỗi hàng
             fig, axes = plt.subplots(num_rows, 2, figsize=(16, 6 * num_rows))
             fig.patch.set_facecolor('#ecf0f1')
             plt.subplots_adjust(wspace=0.3, hspace=0.4)
             
-            # Nếu chỉ có 1 hàng, axes không phải mảng 2D
+            # Nếu chỉ có 1 hàng, điều chỉnh axes
             if num_rows == 1:
                 axes = [axes] if num_features == 1 else [axes]
             
-            colors = {'Giỏi': '#2ecc71', 'Trung bình': '#f39c12', 'Yếu': '#e74c3c'}
-            
             # Boxplot cho mỗi feature
-            for idx, feature in enumerate(features):
-                row = idx // 2
-                col = idx % 2
-                ax = axes[row][col] if num_rows > 1 else axes[0][col]
+            if has_label:
+                for idx, feature in enumerate(features):
+                    row = idx // 2
+                    col = idx % 2
+                    ax = axes[row][col] if num_rows > 1 else axes[0][col]
+                    
+                    data_by_label = [df[df['label'] == lbl][feature].values for lbl in labels]
+                    positions = [i + j * 0.3 for i in range(len(labels)) for j in range(1)]
+                    ax.boxplot(data_by_label, 
+                              positions=positions[:len(labels)], 
+                              widths=0.25, 
+                              patch_artist=True,
+                              boxprops=dict(facecolor=colors[labels[0]], alpha=0.5))
+                    ax.set_xticks(range(len(labels)))
+                    ax.set_xticklabels(labels, rotation=45, ha='right')
+                    ax.set_title(f'Phân phối {feature.capitalize()} theo Nhãn', fontsize=12, fontweight='bold', color='#2c3e50')
+                    ax.set_ylabel('Giá trị', fontsize=10)
+                    ax.set_facecolor('#ffffff')
+                    ax.grid(True, linestyle='--', alpha=0.7)
                 
-                data_by_label = [df[df['label'] == lbl][feature].values for lbl in labels]
-                positions = [i - 0.3 + j * 0.3 for i in range(len(labels)) for j in range(1)]
-                ax.boxplot(data_by_label, positions=positions[:len(labels)], widths=0.25, patch_artist=True,
-                           boxprops=dict(facecolor=colors[labels[0]], alpha=0.5))
-                ax.set_xticks(range(len(labels)))
-                ax.set_xticklabels(labels)
-                ax.set_title(f'Phân phối {feature.capitalize()} theo Nhãn', fontsize=12, fontweight='bold', color='#2c3e50')
-                ax.set_ylabel('Giá trị', fontsize=10)
-                ax.set_facecolor('#ffffff')
-                ax.grid(True, linestyle='--', alpha=0.7)
+                # Xóa subplot thừa nếu số feature lẻ
+                if num_features % 2 == 1:
+                    ax = axes[num_rows - 1][1] if num_rows > 1 else axes[0][1]
+                    ax.axis('off')
             
-            # Nếu số feature lẻ, xóa plot thừa
-            if num_features % 2 == 1:
-                ax = axes[num_rows - 1][1] if num_rows > 1 else axes[0][1]
-                ax.axis('off')
-            
-            # Scatter matrix (thay thế scatter plot cố định)
+            # Scatter matrix
             scatter_fig = plt.figure(figsize=(10, 10))
-            scatter_matrix(df[features], ax=plt.gca(), hist_kwds={'bins': 20}, c=[colors[lbl] for lbl in df['label']], alpha=0.6)
             scatter_fig.patch.set_facecolor('#ecf0f1')
+            if has_label:
+                scatter_matrix(df[features], ax=plt.gca(), hist_kwds={'bins': 20}, 
+                             c=[colors.get(lbl, '#3498db') for lbl in df['label']], alpha=0.6)
+            else:
+                scatter_matrix(df[features], ax=plt.gca(), hist_kwds={'bins': 20}, c='#3498db', alpha=0.6)
             
-            canvas_widget = FigureCanvasTkAgg(fig, parent)
-            canvas_widget.draw()
-            canvas_widget.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
+            plt.tight_layout()
             
+            # Thêm canvas cho boxplot (nếu có label)
+            if has_label:
+                canvas_widget = FigureCanvasTkAgg(fig, parent)
+                canvas_widget.draw()
+                canvas_widget.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
+            
+            # Thêm canvas cho scatter matrix
             scatter_canvas = FigureCanvasTkAgg(scatter_fig, parent)
             scatter_canvas.draw()
             scatter_canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
