@@ -334,9 +334,9 @@ class StatisticsPopup:
                         box.set_alpha(0.5)
                     
                     ax.set_xticks(range(len(labels)))
-                    ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=8, fontfamily='Helvetica')
-                    ax.set_title(f'Phân phối {feature.capitalize()}', fontsize=10, fontweight='bold', color='#2c3e50', fontfamily='Helvetica')
-                    ax.set_ylabel('Giá trị', fontsize=8, fontfamily='Helvetica')
+                    ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=8)
+                    ax.set_title(f'Phân phối {feature.capitalize()}', fontsize=10, fontweight='bold', color='#2c3e50')
+                    ax.set_ylabel('Giá trị', fontsize=8)
                     ax.set_facecolor('#ffffff')
                     ax.grid(True, linestyle='--', alpha=0.7)
                 
@@ -385,7 +385,7 @@ class StatisticsPopup:
             print(f"Debug: Error in create_charts_tab - {str(e)}")
             import traceback
             traceback.print_exc()
-            error_label = tk.Label(chart_frame, text=f"Lỗi khi hiển thị biểu đồ: {str(e)}", font=("Helvetica", 8), bg="#ecf0f1", fg="red")
+            error_label = tk.Label(chart_frame, text=f"Lỗi khi hiển thị biểu đồ: {str(e)}", bg="#ecf0f1", fg="red")
             error_label.grid(row=0, column=0, sticky="nsew")
 
     # Trong StatisticsPopup class, cập nhật create_algorithm_results_tab
