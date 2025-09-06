@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import ttk
-from matplotlib import cm
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import pandas as pd
@@ -248,102 +247,75 @@ class StatisticsPopup:
     
     def create_charts_tab(self, chart_frame):
         try:
-            # Check if self.data is defined and valid
             if self.data is None:
                 raise ValueError("Dữ liệu đầu vào không được cung cấp")
             
             df = pd.DataFrame(self.data) if isinstance(self.data, dict) else self.data
             print(f"Debug: Original data shape={df.shape}, columns={df.columns.tolist()}")
-            
-            # Identify numeric columns
+
+            # Chọn cột số
             features = [col for col in df.columns if pd.api.types.is_numeric_dtype(df[col])]
             if len(features) == 0:
                 raise ValueError("Không tìm thấy cột số nào")
-            
-            # Check for NaN values in each numeric column
-            nan_counts = df[features].isnull().sum()
-            print(f"Debug: NaN counts in numeric columns:\n{nan_counts}")
-            
-            # Include label column if it exists
+
+            # Loại bỏ NaN
             columns_to_use = features + (['label'] if 'label' in df.columns else [])
-            
-            # Drop rows with NaN in selected columns
             df_clean = df[columns_to_use].dropna()
-            print(f"Debug: Cleaned data shape={df_clean.shape}, columns={df_clean.columns.tolist()}")
-            if df_clean.shape[0] < df.shape[0]:
-                print(f"Debug: Dropped {df.shape[0] - df_clean.shape[0]} rows due to NaN values")
-            
-            # If df_clean is empty, try filling NaN values as a fallback
+
             if df_clean.empty:
-                print("Debug: All rows dropped due to NaN, attempting to fill NaN values")
                 df_clean = df[columns_to_use].copy()
                 for col in features:
                     df_clean[col].fillna(df_clean[col].mean(), inplace=True)
                 if 'label' in df_clean.columns:
                     mode_label = df_clean['label'].mode()[0] if not df_clean['label'].mode().empty else 'Unknown'
                     df_clean['label'].fillna(mode_label, inplace=True)
-                print(f"Debug: Data shape after filling NaN={df_clean.shape}")
-                
-                if df_clean.empty or df_clean[features].isnull().any().any():
-                    raise ValueError("Không thể tạo biểu đồ: Không có dữ liệu hợp lệ ngay cả sau khi điền NaN")
-            
+
             has_label = 'label' in df_clean.columns
             labels = sorted(set(df_clean['label'])) if has_label else []
-            
-            # Define colors for boxplot based on labels
+
+            # Màu sắc theo label
             colors = {label: plt.get_cmap('tab10')(i) for i, label in enumerate(labels)} if has_label else {'default': '#3498db'}
-            print(f"Debug: Colors dictionary={colors}")
-            
-            # Limit number of features for performance (use all available if <= 4)
+
+            # Giới hạn số feature tối đa 4
             features = features[:4] if len(features) > 4 else features
-            print(f"Debug: Selected features={features}")
-            
-            # Clear Matplotlib state to avoid artist reuse
-            plt.close('all')
-            print("Debug: Cleared all Matplotlib figures")
-            
-            # Create separate figure for boxplots
+
+            plt.close('all')  # tránh reuse artist
+
+            # --- Vẽ boxplot ---
             boxplot_fig = plt.figure(figsize=(10, 3 * ((len(features) + 1) // 2)))
             boxplot_fig.patch.set_facecolor('#ecf0f1')
-            
-            # Create subplots for boxplots
+
             if len(features) == 1:
                 axes = [boxplot_fig.add_subplot(111)]
             else:
                 axes = boxplot_fig.subplots((len(features) + 1) // 2, 2)
                 if len(features) > 2:
                     axes = axes.flatten()
-            
+
             plt.subplots_adjust(wspace=0.3, hspace=0.4)
-            
+
             if has_label:
                 for idx, feature in enumerate(features):
                     ax = axes[idx] if len(features) > 1 else axes[0]
                     data_by_label = [df_clean[df_clean['label'] == lbl][feature].values for lbl in labels]
                     positions = list(range(len(labels)))
-                    
-                    # Create boxplot for each label with corresponding color
-                    bp = ax.boxplot(data_by_label, 
-                                positions=positions, 
-                                widths=0.25, 
-                                patch_artist=True)
-                    
-                    # Apply colors to each box
+
+                    bp = ax.boxplot(data_by_label, positions=positions, widths=0.25, patch_artist=True)
                     for i, box in enumerate(bp['boxes']):
                         box.set_facecolor(colors.get(labels[i], '#3498db'))
                         box.set_alpha(0.5)
-                    
+
                     ax.set_xticks(range(len(labels)))
                     ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=8)
                     ax.set_title(f'Phân phối {feature.capitalize()}', fontsize=10, fontweight='bold', color='#2c3e50')
                     ax.set_ylabel('Giá trị', fontsize=8)
                     ax.set_facecolor('#ffffff')
                     ax.grid(True, linestyle='--', alpha=0.7)
-                
-                # Turn off unused subplot if any
+
                 if len(features) % 2 == 1 and len(features) > 1:
                     axes[-1].axis('off')
-                        
+
+            # --- Vẽ scatter matrix ---
             scatter_axes = scatter_matrix(
                 df_clean[features],
                 hist_kwds={'bins': 20},
@@ -351,36 +323,43 @@ class StatisticsPopup:
                 alpha=0.6,
                 figsize=(6, 6)
             )
-
-            scatter_fig = scatter_axes[0,0].get_figure()  # lấy figure gốc mà scatter_matrix tự tạo
+            scatter_fig = scatter_axes[0, 0].get_figure()
             scatter_fig.patch.set_facecolor('#ecf0f1')
             scatter_fig.tight_layout()
-     
-            # Use grid layout with provided chart_frame
-            canvas_frame = tk.Frame(chart_frame, bg="#ecf0f1")
-            canvas_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+
+            # --- Thêm scroll ---
+            container = tk.Frame(chart_frame, bg="#ecf0f1")
+            container.grid(row=0, column=0, sticky="nsew")
             chart_frame.rowconfigure(0, weight=1)
             chart_frame.columnconfigure(0, weight=1)
-            
+
+            canvas = tk.Canvas(container, bg="#ecf0f1", highlightthickness=0)
+            scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+            scrollable_frame = tk.Frame(canvas, bg="#ecf0f1")
+
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+
+            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+
+            # --- Nhúng biểu đồ ---
             if has_label:
-                boxplot_canvas = FigureCanvasTkAgg(boxplot_fig, canvas_frame)
+                boxplot_canvas = FigureCanvasTkAgg(boxplot_fig, scrollable_frame)
                 boxplot_canvas.draw()
-                boxplot_canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
-                canvas_frame.rowconfigure(0, weight=1)
-                canvas_frame.columnconfigure(0, weight=1)
-            
-            scatter_canvas = FigureCanvasTkAgg(scatter_fig, canvas_frame)
+                boxplot_canvas.get_tk_widget().pack(fill="both", expand=True, padx=5, pady=5)
+
+            scatter_canvas = FigureCanvasTkAgg(scatter_fig, scrollable_frame)
             scatter_canvas.draw()
-            scatter_canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew")
-            canvas_frame.rowconfigure(1, weight=1)
-            
+            scatter_canvas.get_tk_widget().pack(fill="both", expand=True, padx=5, pady=5)
+
             print(f"Debug: Charts tab rendered - boxplot={has_label}, scatter_matrix=True")
-            
-            # Close figures to prevent memory leaks
-            plt.close(boxplot_fig)
-            plt.close(scatter_fig)
-            print("Debug: Closed Matplotlib figures")
-        
+
         except Exception as e:
             print(f"Debug: Error in create_charts_tab - {str(e)}")
             import traceback
@@ -501,7 +480,7 @@ class StatisticsPopup:
 class MainUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("🚀 Dự Án Khai Phá Dữ Liệu - Phiên bản nâng cao")
+        self.root.title("🚀 Demo Khai Phá Dữ Liệu")
         self.root.geometry("1400x900")  # Tăng kích thước cửa sổ chính
         self.root.configure(bg="#2c3e50")
         
@@ -673,10 +652,11 @@ class MainUI:
         self.view_results_button.grid(row=0, column=3, padx=10, pady=15, sticky="ew")
         
         algo_frame = tk.Frame(control_frame, bg="#ecf0f1")
-        algo_frame.grid(row=1, column=0, columnspan=4, sticky="ew", pady=15)  # Span cả 4 cột
-        
+        algo_frame.grid(row=1, column=0, columnspan=4, sticky="ew", pady=15)
+
         tk.Label(algo_frame, text="🧠 Thuật toán:", font=("Segoe UI", 10, "bold"),
                 bg="#ecf0f1", fg="#2c3e50").pack(side="left", padx=(15, 5))
+
         algo_combo = ttk.Combobox(
             algo_frame,
             textvariable=self.algo_var,
@@ -686,11 +666,11 @@ class MainUI:
             width=15
         )
         algo_combo.pack(side="left", padx=5)
-        
-        tk.Label(algo_frame, text="K:", font=("Segoe UI", 10, "bold"),
-                bg="#ecf0f1", fg="#2c3e50").pack(side="left", padx=(20, 5))
-        
-        k_entry = tk.Entry(
+
+        # --- K entry (ẩn mặc định) ---
+        self.k_label = tk.Label(algo_frame, text="K:", font=("Segoe UI", 10, "bold"),
+                                bg="#ecf0f1", fg="#2c3e50")
+        self.k_entry = tk.Entry(
             algo_frame,
             textvariable=self.k_var,
             font=("Segoe UI", 10),
@@ -698,9 +678,9 @@ class MainUI:
             relief="solid",
             bd=1
         )
-        k_entry.pack(side="left", padx=5)
-        
-        reduct_check = tk.Checkbutton(
+
+        # --- PCA checkbox (ẩn mặc định) ---
+        self.reduct_check = tk.Checkbutton(
             algo_frame,
             text="Áp dụng Reduct (PCA)",
             variable=self.use_reduct_var,
@@ -710,9 +690,28 @@ class MainUI:
             activebackground="#ecf0f1",
             activeforeground="#2c3e50"
         )
-        reduct_check.pack(side="left", padx=15)
+
+        self.reduct_check.pack(side="left", padx=15)
         
         self.add_hover_effects()
+
+     # --- Hàm callback ---
+        def on_algo_change(event=None):
+            algo = self.algo_var.get()
+            # Reset
+            self.k_label.pack_forget()
+            self.k_entry.pack_forget()
+            self.reduct_check.pack_forget()
+
+            if algo in ["KNN", "K-Means"]:
+                self.k_label.pack(side="left", padx=(20, 5))
+                self.k_entry.pack(side="left", padx=5)
+                self.reduct_check.pack(side="left", padx=15)
+
+        algo_combo.bind("<<ComboboxSelected>>", on_algo_change)
+
+    # --- Khởi tạo mặc định theo giá trị hiện tại của algo_var --
+        on_algo_change()
             
     def add_hover_effects(self):
         buttons = [self.load_csv_button, self.run_button, 
