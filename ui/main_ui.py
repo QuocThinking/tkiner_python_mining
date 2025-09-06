@@ -733,25 +733,40 @@ class MainUI:
             relief="solid",
             bd=1
         )
-        tree_frame.grid(row=3, column=0, sticky="ew", padx=30, pady=15)  # Tăng padding
-        
+        tree_frame.grid(row=3, column=0, sticky="ew", padx=30, pady=15)
+
         tree_container = tk.Frame(tree_frame, bg="#ecf0f1")
-        tree_container.pack(fill="both", expand=True, padx=15, pady=15)  # Tăng padding
-        
-        tree = ttk.Treeview(tree_container, height=15)  # Tăng chiều cao Treeview
-        
+        tree_container.pack(fill="both", expand=True, padx=15, pady=15)
+
+        # 🔹 Bật show="headings" để không bị cột #0 mặc định
+        tree = ttk.Treeview(tree_container, height=15, show="headings")
+
+        # Scrollbars
         v_scrollbar = ttk.Scrollbar(tree_container, orient="vertical", command=tree.yview)
         h_scrollbar = ttk.Scrollbar(tree_container, orient="horizontal", command=tree.xview)
-        
         tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
-        
+
         tree.grid(row=0, column=0, sticky="nsew")
         v_scrollbar.grid(row=0, column=1, sticky="ns")
         h_scrollbar.grid(row=1, column=0, sticky="ew")
-        
+
         tree_container.grid_rowconfigure(0, weight=1)
         tree_container.grid_columnconfigure(0, weight=1)
-        
+
+        # 🔹 Style mặc định cho Treeview
+        style = ttk.Style()
+        style.configure("Treeview", rowheight=25, font=("Segoe UI", 10))
+        style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"))
+
+        # 🔹 Khi thêm cột CSV sau này, set width mặc định
+        def adjust_columns(event=None):
+            cols = tree["columns"]
+            for col in cols:
+                tree.column(col, width=120, anchor="center", stretch=True)
+
+        # Gắn sự kiện khi thay đổi cột (mỗi lần load CSV)
+        tree.bind("<<TreeviewOpen>>", adjust_columns)
+
         return tree
     
     def animate_ui_elements(self):
