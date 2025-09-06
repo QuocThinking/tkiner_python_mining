@@ -132,7 +132,8 @@ class StatisticsPopup:
         self.popup.configure(bg="#ecf0f1")
         self.popup.transient(parent)
         self.popup.grab_set()
-        
+        self.data = data  # Ensure data is assigned
+
         style = ttk.Style()
         style.theme_use('clam')
         style.configure("Popup.TFrame", background="#ecf0f1")
@@ -144,7 +145,7 @@ class StatisticsPopup:
         header_frame.pack_propagate(False)
         
         title_label = tk.Label(
-            header_frame, 
+            header_frame,
             text="📊 Thống kê và Phân tích Dữ liệu", 
             font=("Segoe UI", 16, "bold"),
             bg="#34495e", 
@@ -165,7 +166,7 @@ class StatisticsPopup:
             notebook.add(algo_frame, text="🧠 Kết quả thuật toán")
         
         self.create_statistics_tab(stats_frame, data)
-        self.create_charts_tab(chart_frame, data)
+        self.create_charts_tab(chart_frame)
         if algo_result and algo_name:
             self.create_algorithm_results_tab(algo_frame, algo_result, algo_name, data)
         
@@ -245,54 +246,85 @@ class StatisticsPopup:
         
         return card
     
-    def create_charts_tab(self):
+    def create_charts_tab(self, chart_frame):
         try:
+            # Check if self.data is defined and valid
+            if self.data is None:
+                raise ValueError("Dữ liệu đầu vào không được cung cấp")
+            
             df = pd.DataFrame(self.data) if isinstance(self.data, dict) else self.data
+            print(f"Debug: Original data shape={df.shape}, columns={df.columns.tolist()}")
+            
+            # Identify numeric columns
             features = [col for col in df.columns if pd.api.types.is_numeric_dtype(df[col])]
             if len(features) == 0:
-                raise ValueError("No numeric feature columns found")
-
-            # Drop rows with NaN in numeric columns to ensure consistency
-            df_clean = df[features + (['label'] if 'label' in df.columns else [])].dropna()
-            if df_clean.empty:
-                raise ValueError("No valid data after removing NaN values")
+                raise ValueError("Không tìm thấy cột số nào")
             
+            # Check for NaN values in each numeric column
+            nan_counts = df[features].isnull().sum()
+            print(f"Debug: NaN counts in numeric columns:\n{nan_counts}")
+            
+            # Include label column if it exists
+            columns_to_use = features + (['label'] if 'label' in df.columns else [])
+            
+            # Drop rows with NaN in selected columns
+            df_clean = df[columns_to_use].dropna()
             print(f"Debug: Cleaned data shape={df_clean.shape}, columns={df_clean.columns.tolist()}")
+            if df_clean.shape[0] < df.shape[0]:
+                print(f"Debug: Dropped {df.shape[0] - df_clean.shape[0]} rows due to NaN values")
+            
+            # If df_clean is empty, try filling NaN values as a fallback
+            if df_clean.empty:
+                print("Debug: All rows dropped due to NaN, attempting to fill NaN values")
+                df_clean = df[columns_to_use].copy()
+                for col in features:
+                    df_clean[col].fillna(df_clean[col].mean(), inplace=True)
+                if 'label' in df_clean.columns:
+                    mode_label = df_clean['label'].mode()[0] if not df_clean['label'].mode().empty else 'Unknown'
+                    df_clean['label'].fillna(mode_label, inplace=True)
+                print(f"Debug: Data shape after filling NaN={df_clean.shape}")
+                
+                if df_clean.empty or df_clean[features].isnull().any().any():
+                    raise ValueError("Không thể tạo biểu đồ: Không có dữ liệu hợp lệ ngay cả sau khi điền NaN")
             
             has_label = 'label' in df_clean.columns
             labels = sorted(set(df_clean['label'])) if has_label else []
             
-            # Create color palette
-            if has_label:
-                num_labels = len(labels)
-                color_map = cm.get_cmap('tab20', max(num_labels, 10))
-                colors = {label: color_map(i / num_labels) for i, label in enumerate(labels)}
-            else:
-                colors = {'default': '#3498db'}
+            # Limit number of features for performance (use all available if <= 4)
+            features = features[:4] if len(features) > 4 else features
+            print(f"Debug: Selected features={features}")
+            
+            # Clear Matplotlib state to avoid artist reuse
+            plt.close('all')
+            print("Debug: Cleared all Matplotlib figures")
             
             # Boxplot
-            num_features = len(features)
-            num_rows = (num_features + 1) // 2
-            fig, axes = plt.subplots(num_rows, 2, figsize=(10, 3 * num_rows))
+            fig = plt.figure(figsize=(10, 3 * ((len(features) + 1) // 2)))
             fig.patch.set_facecolor('#ecf0f1')
+            axes = fig.subplots((len(features) + 1) // 2, 2)
             plt.subplots_adjust(wspace=0.3, hspace=0.4)
             
-            if num_rows == 1:
-                axes = [axes] if num_features == 1 else [axes]
+            if len(features) <= 2:
+                axes = [axes] if len(features) == 1 else axes
+            else:
+                axes = axes.flatten()
+            colors = {
+            "info": {"bg": "#3498db", "fg": "white"},
+            "success": {"bg": "#2ecc71", "fg": "white"},
+            "error": {"bg": "#e74c3c", "fg": "white"},
+            "loading": {"bg": "#f39c12", "fg": "white"}
+            }
             
             if has_label:
                 for idx, feature in enumerate(features):
-                    row = idx // 2
-                    col = idx % 2
-                    ax = axes[row][col] if num_rows > 1 else axes[0][col]
-                    
+                    ax = axes[idx] if len(features) > 2 else axes[idx % 2]
                     data_by_label = [df_clean[df_clean['label'] == lbl][feature].values for lbl in labels]
-                    positions = [i + j * 0.3 for i in range(len(labels)) for j in range(1)]
+                    positions = list(range(len(labels)))
                     ax.boxplot(data_by_label, 
-                              positions=positions[:len(labels)], 
-                              widths=0.25, 
-                              patch_artist=True,
-                              boxprops=dict(facecolor=colors[labels[0]], alpha=0.5))
+                               positions=positions, 
+                               widths=0.25, 
+                               patch_artist=True,
+                               boxprops=dict(facecolor=colors[labels[0]], alpha=0.5))
                     ax.set_xticks(range(len(labels)))
                     ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=8, fontfamily='Helvetica')
                     ax.set_title(f'Phân phối {feature.capitalize()}', fontsize=10, fontweight='bold', color='#2c3e50', fontfamily='Helvetica')
@@ -300,28 +332,28 @@ class StatisticsPopup:
                     ax.set_facecolor('#ffffff')
                     ax.grid(True, linestyle='--', alpha=0.7)
                 
-                if num_features % 2 == 1:
-                    ax = axes[num_rows - 1][1] if num_rows > 1 else axes[0][1]
+                if len(features) % 2 == 1:
+                    ax = axes[-1]
                     ax.axis('off')
             
             # Scatter matrix
             scatter_fig = plt.figure(figsize=(6, 6))
             scatter_fig.patch.set_facecolor('#ecf0f1')
             
-            # Ensure scatter_matrix uses a fresh figure
+            # Explicitly create new axes for scatter_matrix to avoid artist reuse
             scatter_matrix(df_clean[features], 
-                          hist_kwds={'bins': 20}, 
-                          c=[colors.get(lbl, '#3498db') for lbl in df_clean['label']] if has_label else '#3498db',
-                          alpha=0.6,
-                          figure=scatter_fig)
+                           hist_kwds={'bins': 20}, 
+                           c=[colors.get(lbl, '#3498db') for lbl in df_clean['label']] if has_label else '#3498db',
+                           alpha=0.6,
+                           figure=scatter_fig)
             
-            plt.tight_layout()
+            scatter_fig.tight_layout()
             
-            # Use grid layout
-            canvas_frame = tk.Frame(self.charts_tab, bg="#ecf0f1")
+            # Use grid layout with provided chart_frame
+            canvas_frame = tk.Frame(chart_frame, bg="#ecf0f1")
             canvas_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-            self.charts_tab.rowconfigure(0, weight=1)
-            self.charts_tab.columnconfigure(0, weight=1)
+            chart_frame.rowconfigure(0, weight=1)
+            chart_frame.columnconfigure(0, weight=1)
             
             if has_label:
                 canvas_widget = FigureCanvasTkAgg(fig, canvas_frame)
@@ -336,119 +368,114 @@ class StatisticsPopup:
             canvas_frame.rowconfigure(1, weight=1)
             
             print(f"Debug: Charts tab rendered - boxplot={has_label}, scatter_matrix=True")
+            
+            # Close figures to prevent memory leaks
+            plt.close(fig)
+            plt.close(scatter_fig)
+            print("Debug: Closed Matplotlib figures")
         
         except Exception as e:
             print(f"Debug: Error in create_charts_tab - {str(e)}")
             import traceback
             traceback.print_exc()
-            error_label = tk.Label(self.charts_tab, text=f"Lỗi khi hiển thị biểu đồ: {str(e)}", font=("Helvetica", 8), bg="#ecf0f1", fg="red")
+            error_label = tk.Label(chart_frame, text=f"Lỗi khi hiển thị biểu đồ: {str(e)}", font=("Helvetica", 8), bg="#ecf0f1", fg="red")
             error_label.grid(row=0, column=0, sticky="nsew")
 
-    # Trong create_algorithm_results_tab: Dynamic feature_importance, cluster_centers
-    def create_algorithm_results_tab(self):
+    # Trong StatisticsPopup class, cập nhật create_algorithm_results_tab
+    def create_algorithm_results_tab(self, parent, algo_result, algo_name, data):
         try:
-            df = pd.DataFrame(self.data) if isinstance(self.data, dict) else self.data
-            features = [col for col in df.columns if pd.api.types.is_numeric_dtype(df[col])]
+            if 'label' not in data.columns:
+                raise ValueError("No 'label' column")
+            df = pd.DataFrame(data) if isinstance(data, dict) else data
+            features = [col for col in df.columns if col != 'label' and pd.api.types.is_numeric_dtype(df[col])]
             if len(features) == 0:
                 raise ValueError("No numeric feature columns found")
-            has_label = 'label' in df.columns
-            labels = sorted(set(df['label'])) if has_label else []
+            labels = sorted(set(df['label']))
             
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
             fig.patch.set_facecolor('#ecf0f1')
             plt.subplots_adjust(wspace=0.4)
             
-            print(f"Debug: Entering create_algorithm_results_tab - algo={self.algo_name}, reduct_info={self.algo_result.get('reduct_info')}, rules={self.algo_result.get('rules')}")
+            print(f"Debug: Entering create_algorithm_results_tab - algo={algo_name}, reduct_info={algo_result.get('reduct_info')}, rules={algo_result.get('rules')}")
             
-            if self.algo_result.get("confusion_matrix") and self.algo_name != "K-Means" and has_label:
-                cm = np.array(self.algo_result["confusion_matrix"])
+            # Vẽ ma trận nhầm lẫn nếu có
+            if algo_result.get("confusion_matrix") and algo_name != "K-Means":
+                cm = np.array(algo_result["confusion_matrix"])
                 im = ax1.imshow(cm, cmap='Blues', aspect='auto')
-                ax1.set_title(f'Ma trận nhầm lẫn ({self.algo_name})', fontsize=10, fontweight='bold', color='#2c3e50', fontfamily='Helvetica')
+                ax1.set_title(f'Ma trận nhầm lẫn ({algo_name})', fontsize=12, fontweight='bold', color='#2c3e50')
                 ax1.set_xticks(range(len(labels)))
                 ax1.set_yticks(range(len(labels)))
-                ax1.set_xticklabels(labels, rotation=45, ha='right', fontsize=8, fontfamily='Helvetica')
-                ax1.set_yticklabels(labels, fontsize=8, fontfamily='Helvetica')
-                ax1.set_xlabel('Dự đoán', fontsize=8, fontfamily='Helvetica')
-                ax1.set_ylabel('Thực tế', fontsize=8, fontfamily='Helvetica')
+                ax1.set_xticklabels(labels, rotation=45, ha='right')
+                ax1.set_yticklabels(labels)
+                ax1.set_xlabel('Dự đoán', fontsize=10)
+                ax1.set_ylabel('Thực tế', fontsize=10)
                 for i in range(len(labels)):
                     for j in range(len(labels)):
                         ax1.text(j, i, f'{cm[i, j]}', ha='center', va='center', 
-                                 color='white' if cm[i, j] > cm.max() / 2 else 'black', fontsize=8, fontfamily='Helvetica')
+                                 color='white' if cm[i, j] > cm.max() / 2 else 'black')
                 fig.colorbar(im, ax=ax1, label='Số lượng')
                 ax1.set_facecolor('#ffffff')
-            else:
-                ax1.text(0.5, 0.5, 'Không có ma trận nhầm lẫn', ha='center', va='center', fontsize=8, fontfamily='Helvetica')
-                ax1.set_facecolor('#ffffff')
             
-            if self.algo_name in ["Decision Tree", "ID3"] and self.algo_result.get("additional_info", {}).get("feature_importance"):
-                importance_dict = self.algo_result["additional_info"]["feature_importance"]
+            # Vẽ biểu đồ bổ sung theo thuật toán
+            if algo_name in ["Decision Tree", "ID3"] and algo_result.get("additional_info", {}).get("feature_importance"):
+                importance_dict = algo_result["additional_info"]["feature_importance"]
                 ax2.bar(list(importance_dict.keys()), list(importance_dict.values()), color='#3498db', alpha=0.7)
-                ax2.set_title('Tầm quan trọng đặc trưng (Gini Index)' if self.algo_name == "Decision Tree" else 'Tầm quan trọng đặc trưng (Entropy)', 
-                              fontsize=10, fontweight='bold', color='#2c3e50', fontfamily='Helvetica')
-                ax2.set_ylabel('Tầm quan trọng', fontsize=8, fontfamily='Helvetica')
-                ax2.set_xticklabels(list(importance_dict.keys()), rotation=45, ha='right', fontsize=8, fontfamily='Helvetica')
+                ax2.set_title('Tầm quan trọng đặc trưng (Gini Index)' if algo_name == "Decision Tree" else 'Tầm quan trọng đặc trưng (Entropy)', 
+                              fontsize=12, fontweight='bold', color='#2c3e50')
+                ax2.set_ylabel('Tầm quan trọng', fontsize=10)
+                ax2.set_xticklabels(list(importance_dict.keys()), rotation=45, ha='right')
                 ax2.set_facecolor('#ffffff')
                 ax2.grid(True, linestyle='--', alpha=0.7)
             
-            elif self.algo_name == "K-Means" and self.algo_result.get("additional_info", {}).get("cluster_centers"):
-                centers = np.array(self.algo_result["additional_info"]["cluster_centers"])
-                plot_features = [f"PC{i+1}" for i in range(centers.shape[1])] if self.algo_result.get("reduct_info") else features[:centers.shape[1]]
+            elif algo_name == "K-Means" and algo_result.get("additional_info", {}).get("cluster_centers"):
+                centers = np.array(algo_result["additional_info"]["cluster_centers"])
+                # Dynamic feature names
+                plot_features = [f"PC{i+1}" for i in range(centers.shape[1])] if algo_result.get("reduct_info") else features[:centers.shape[1]]
                 for i, center in enumerate(centers):
-                    ax2.plot(plot_features, center, marker='o', label=f'Cụm {i} ({self.algo_result["additional_info"]["cluster_label_map"][i]})')
-                ax2.set_title('Tâm cụm K-Means', fontsize=10, fontweight='bold', color='#2c3e50', fontfamily='Helvetica')
-                ax2.set_ylabel('Giá trị', fontsize=8, fontfamily='Helvetica')
-                ax2.set_xticklabels(plot_features, rotation=45, ha='right', fontsize=8, fontfamily='Helvetica')
+                    ax2.plot(plot_features, center, marker='o', label=f'Cụm {i} ({algo_result["additional_info"]["cluster_label_map"][i]})')
+                ax2.set_title('Tâm cụm K-Means', fontsize=12, fontweight='bold', color='#2c3e50')
+                ax2.set_ylabel('Giá trị', fontsize=10)
+                ax2.set_xticklabels(plot_features, rotation=45, ha='right')
                 ax2.set_facecolor('#ffffff')
-                ax2.legend(fontsize=8)
+                ax2.legend()
                 ax2.grid(True, linestyle='--', alpha=0.7)
             
-            elif self.algo_name == "Association Rules" and self.algo_result.get("rules"):
-                ax2.text(0.5, 0.5, 'Luật kết hợp hiển thị trong bảng', ha='center', va='center', fontsize=8, fontfamily='Helvetica')
+            elif algo_name == "Association Rules" and algo_result.get("rules"):
+                ax2.text(0.5, 0.5, 'Luật kết hợp hiển thị trong bảng', ha='center', va='center', fontsize=10)
                 ax2.set_facecolor('#ffffff')
             
             else:
-                ax2.text(0.5, 0.5, 'Không có biểu đồ bổ sung', ha='center', va='center', fontsize=8, fontfamily='Helvetica')
+                ax2.text(0.5, 0.5, 'Không có biểu đồ bổ sung', ha='center', va='center', fontsize=10)
                 ax2.set_facecolor('#ffffff')
             
             plt.tight_layout()
             
-            canvas_frame = tk.Frame(self.algo_tab, bg="#ecf0f1")
-            canvas_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-            self.algo_tab.rowconfigure(0, weight=1)
-            self.algo_tab.columnconfigure(0, weight=1)
-            
-            canvas_widget = FigureCanvasTkAgg(fig, canvas_frame)
+            canvas_widget = FigureCanvasTkAgg(fig, parent)
             canvas_widget.draw()
-            canvas_widget.get_tk_widget().grid(row=0, column=0, sticky="nsew")
-            canvas_frame.rowconfigure(0, weight=1)
-            canvas_frame.columnconfigure(0, weight=1)
+            canvas_widget.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
             
-            if self.algo_result.get("classification_report") and has_label:
-                report_frame = tk.Frame(self.algo_tab, bg="#ecf0f1")
-                report_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
-                self.algo_tab.rowconfigure(1, weight=1)
-                report_text = tk.Text(report_frame, height=5, font=("Helvetica", 8), bg="white")
-                report_text.grid(row=0, column=0, sticky="nsew")
-                report_frame.rowconfigure(0, weight=1)
-                report_frame.columnconfigure(0, weight=1)
+            # Hiển thị classification report nếu có
+            if algo_result.get("classification_report"):
+                report_frame = tk.Frame(parent, bg="#ecf0f1")
+                report_frame.pack(fill="x", padx=10, pady=10)
+                report_text = tk.Text(report_frame, height=6, font=("Segoe UI", 10), bg="white")
+                report_text.pack(fill="x")
                 report_str = "Classification Report:\n"
                 for label in labels:
                     report_str += f"{label}:\n"
-                    report_str += f"  Precision: {self.algo_result['classification_report'][label]['precision']:.2f}\n"
-                    report_str += f"  Recall: {self.algo_result['classification_report'][label]['recall']:.2f}\n"
-                    report_str += f"  F1-score: {self.algo_result['classification_report'][label]['f1-score']:.2f}\n"
+                    report_str += f"  Precision: {algo_result['classification_report'][label]['precision']:.2f}\n"
+                    report_str += f"  Recall: {algo_result['classification_report'][label]['recall']:.2f}\n"
+                    report_str += f"  F1-score: {algo_result['classification_report'][label]['f1-score']:.2f}\n"
                 report_text.insert("1.0", report_str)
                 report_text.configure(state="disabled")
             
-            if self.algo_result.get("reduct_info"):
-                reduct_frame = tk.Frame(self.algo_tab, bg="#ecf0f1")
-                reduct_frame.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
-                self.algo_tab.rowconfigure(2, weight=1)
-                reduct_text = tk.Text(reduct_frame, height=3, font=("Helvetica", 8), bg="white")
-                reduct_text.grid(row=0, column=0, sticky="nsew")
-                reduct_frame.rowconfigure(0, weight=1)
-                reduct_frame.columnconfigure(0, weight=1)
-                reduct_info = self.algo_result["reduct_info"]
+            # Hiển thị reduct info nếu có
+            if algo_result.get("reduct_info"):
+                reduct_frame = tk.Frame(parent, bg="#ecf0f1")
+                reduct_frame.pack(fill="x", padx=10, pady=10)
+                reduct_text = tk.Text(reduct_frame, height=4, font=("Segoe UI", 10), bg="white")
+                reduct_text.pack(fill="x")
+                reduct_info = algo_result["reduct_info"]
                 reduct_str = "Reduct Info:\n"
                 reduct_str += f"- Số thành phần chính: {reduct_info['reduced_features'].shape[1]}\n"
                 reduct_str += "- Tỷ lệ phương sai: "
@@ -457,14 +484,12 @@ class StatisticsPopup:
                 reduct_text.insert("1.0", reduct_str)
                 reduct_text.configure(state="disabled")
             else:
-                print(f"Debug: No reduct_info available for algo={self.algo_name}")
+                print(f"Debug: No reduct_info available for algo={algo_name}")
         
         except Exception as e:
             print(f"Debug: Error in create_algorithm_results_tab - {str(e)}")
             import traceback
             traceback.print_exc()
-            error_label = tk.Label(self.algo_tab, text=f"Lỗi khi hiển thị kết quả: {str(e)}", font=("Helvetica", 8), bg="#ecf0f1", fg="red")
-            error_label.grid(row=0, column=0, sticky="nsew")
 
 class MainUI:
     def __init__(self, root):
@@ -899,116 +924,6 @@ class MainUI:
                 self.show_notification(f"❌ Lỗi khi chạy thuật toán: {str(e)}", "error")
         
         threading.Thread(target=run, daemon=True).start()
-
-    # Trong StatisticsPopup class, cập nhật create_algorithm_results_tab
-    def create_algorithm_results_tab(self, parent, algo_result, algo_name, data):
-        try:
-            if 'label' not in data.columns:
-                raise ValueError("No 'label' column")
-            df = pd.DataFrame(data) if isinstance(data, dict) else data
-            features = [col for col in df.columns if col != 'label' and pd.api.types.is_numeric_dtype(df[col])]
-            if len(features) == 0:
-                raise ValueError("No numeric feature columns found")
-            labels = sorted(set(df['label']))
-            
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-            fig.patch.set_facecolor('#ecf0f1')
-            plt.subplots_adjust(wspace=0.4)
-            
-            print(f"Debug: Entering create_algorithm_results_tab - algo={algo_name}, reduct_info={algo_result.get('reduct_info')}, rules={algo_result.get('rules')}")
-            
-            # Vẽ ma trận nhầm lẫn nếu có
-            if algo_result.get("confusion_matrix") and algo_name != "K-Means":
-                cm = np.array(algo_result["confusion_matrix"])
-                im = ax1.imshow(cm, cmap='Blues', aspect='auto')
-                ax1.set_title(f'Ma trận nhầm lẫn ({algo_name})', fontsize=12, fontweight='bold', color='#2c3e50')
-                ax1.set_xticks(range(len(labels)))
-                ax1.set_yticks(range(len(labels)))
-                ax1.set_xticklabels(labels, rotation=45, ha='right')
-                ax1.set_yticklabels(labels)
-                ax1.set_xlabel('Dự đoán', fontsize=10)
-                ax1.set_ylabel('Thực tế', fontsize=10)
-                for i in range(len(labels)):
-                    for j in range(len(labels)):
-                        ax1.text(j, i, f'{cm[i, j]}', ha='center', va='center', 
-                                 color='white' if cm[i, j] > cm.max() / 2 else 'black')
-                fig.colorbar(im, ax=ax1, label='Số lượng')
-                ax1.set_facecolor('#ffffff')
-            
-            # Vẽ biểu đồ bổ sung theo thuật toán
-            if algo_name in ["Decision Tree", "ID3"] and algo_result.get("additional_info", {}).get("feature_importance"):
-                importance_dict = algo_result["additional_info"]["feature_importance"]
-                ax2.bar(list(importance_dict.keys()), list(importance_dict.values()), color='#3498db', alpha=0.7)
-                ax2.set_title('Tầm quan trọng đặc trưng (Gini Index)' if algo_name == "Decision Tree" else 'Tầm quan trọng đặc trưng (Entropy)', 
-                              fontsize=12, fontweight='bold', color='#2c3e50')
-                ax2.set_ylabel('Tầm quan trọng', fontsize=10)
-                ax2.set_xticklabels(list(importance_dict.keys()), rotation=45, ha='right')
-                ax2.set_facecolor('#ffffff')
-                ax2.grid(True, linestyle='--', alpha=0.7)
-            
-            elif algo_name == "K-Means" and algo_result.get("additional_info", {}).get("cluster_centers"):
-                centers = np.array(algo_result["additional_info"]["cluster_centers"])
-                # Dynamic feature names
-                plot_features = [f"PC{i+1}" for i in range(centers.shape[1])] if algo_result.get("reduct_info") else features[:centers.shape[1]]
-                for i, center in enumerate(centers):
-                    ax2.plot(plot_features, center, marker='o', label=f'Cụm {i} ({algo_result["additional_info"]["cluster_label_map"][i]})')
-                ax2.set_title('Tâm cụm K-Means', fontsize=12, fontweight='bold', color='#2c3e50')
-                ax2.set_ylabel('Giá trị', fontsize=10)
-                ax2.set_xticklabels(plot_features, rotation=45, ha='right')
-                ax2.set_facecolor('#ffffff')
-                ax2.legend()
-                ax2.grid(True, linestyle='--', alpha=0.7)
-            
-            elif algo_name == "Association Rules" and algo_result.get("rules"):
-                ax2.text(0.5, 0.5, 'Luật kết hợp hiển thị trong bảng', ha='center', va='center', fontsize=10)
-                ax2.set_facecolor('#ffffff')
-            
-            else:
-                ax2.text(0.5, 0.5, 'Không có biểu đồ bổ sung', ha='center', va='center', fontsize=10)
-                ax2.set_facecolor('#ffffff')
-            
-            plt.tight_layout()
-            
-            canvas_widget = FigureCanvasTkAgg(fig, parent)
-            canvas_widget.draw()
-            canvas_widget.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
-            
-            # Hiển thị classification report nếu có
-            if algo_result.get("classification_report"):
-                report_frame = tk.Frame(parent, bg="#ecf0f1")
-                report_frame.pack(fill="x", padx=10, pady=10)
-                report_text = tk.Text(report_frame, height=6, font=("Segoe UI", 10), bg="white")
-                report_text.pack(fill="x")
-                report_str = "Classification Report:\n"
-                for label in labels:
-                    report_str += f"{label}:\n"
-                    report_str += f"  Precision: {algo_result['classification_report'][label]['precision']:.2f}\n"
-                    report_str += f"  Recall: {algo_result['classification_report'][label]['recall']:.2f}\n"
-                    report_str += f"  F1-score: {algo_result['classification_report'][label]['f1-score']:.2f}\n"
-                report_text.insert("1.0", report_str)
-                report_text.configure(state="disabled")
-            
-            # Hiển thị reduct info nếu có
-            if algo_result.get("reduct_info"):
-                reduct_frame = tk.Frame(parent, bg="#ecf0f1")
-                reduct_frame.pack(fill="x", padx=10, pady=10)
-                reduct_text = tk.Text(reduct_frame, height=4, font=("Segoe UI", 10), bg="white")
-                reduct_text.pack(fill="x")
-                reduct_info = algo_result["reduct_info"]
-                reduct_str = "Reduct Info:\n"
-                reduct_str += f"- Số thành phần chính: {reduct_info['reduced_features'].shape[1]}\n"
-                reduct_str += "- Tỷ lệ phương sai: "
-                for i, ratio in enumerate(reduct_info['explained_variance_ratio']):
-                    reduct_str += f"PC{i+1}: {ratio*100:.1f}% "
-                reduct_text.insert("1.0", reduct_str)
-                reduct_text.configure(state="disabled")
-            else:
-                print(f"Debug: No reduct_info available for algo={algo_name}")
-        
-        except Exception as e:
-            print(f"Debug: Error in create_algorithm_results_tab - {str(e)}")
-            import traceback
-            traceback.print_exc()
 
 if __name__ == "__main__":
     root = tk.Tk()
