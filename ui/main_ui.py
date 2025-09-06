@@ -290,6 +290,10 @@ class StatisticsPopup:
             has_label = 'label' in df_clean.columns
             labels = sorted(set(df_clean['label'])) if has_label else []
             
+            # Define colors for boxplot based on labels
+            colors = {label: plt.get_cmap('tab10')(i) for i, label in enumerate(labels)} if has_label else {'default': '#3498db'}
+            print(f"Debug: Colors dictionary={colors}")
+            
             # Limit number of features for performance (use all available if <= 4)
             features = features[:4] if len(features) > 4 else features
             print(f"Debug: Selected features={features}")
@@ -298,33 +302,37 @@ class StatisticsPopup:
             plt.close('all')
             print("Debug: Cleared all Matplotlib figures")
             
-            # Boxplot
-            fig = plt.figure(figsize=(10, 3 * ((len(features) + 1) // 2)))
-            fig.patch.set_facecolor('#ecf0f1')
-            axes = fig.subplots((len(features) + 1) // 2, 2)
-            plt.subplots_adjust(wspace=0.3, hspace=0.4)
+            # Create separate figure for boxplots
+            boxplot_fig = plt.figure(figsize=(10, 3 * ((len(features) + 1) // 2)))
+            boxplot_fig.patch.set_facecolor('#ecf0f1')
             
-            if len(features) <= 2:
-                axes = [axes] if len(features) == 1 else axes
+            # Create subplots for boxplots
+            if len(features) == 1:
+                axes = [boxplot_fig.add_subplot(111)]
             else:
-                axes = axes.flatten()
-            colors = {
-            "info": {"bg": "#3498db", "fg": "white"},
-            "success": {"bg": "#2ecc71", "fg": "white"},
-            "error": {"bg": "#e74c3c", "fg": "white"},
-            "loading": {"bg": "#f39c12", "fg": "white"}
-            }
+                axes = boxplot_fig.subplots((len(features) + 1) // 2, 2)
+                if len(features) > 2:
+                    axes = axes.flatten()
+            
+            plt.subplots_adjust(wspace=0.3, hspace=0.4)
             
             if has_label:
                 for idx, feature in enumerate(features):
-                    ax = axes[idx] if len(features) > 2 else axes[idx % 2]
+                    ax = axes[idx] if len(features) > 1 else axes[0]
                     data_by_label = [df_clean[df_clean['label'] == lbl][feature].values for lbl in labels]
                     positions = list(range(len(labels)))
-                    ax.boxplot(data_by_label, 
-                               positions=positions, 
-                               widths=0.25, 
-                               patch_artist=True,
-                               boxprops=dict(facecolor=colors[labels[0]], alpha=0.5))
+                    
+                    # Create boxplot for each label with corresponding color
+                    bp = ax.boxplot(data_by_label, 
+                                positions=positions, 
+                                widths=0.25, 
+                                patch_artist=True)
+                    
+                    # Apply colors to each box
+                    for i, box in enumerate(bp['boxes']):
+                        box.set_facecolor(colors.get(labels[i], '#3498db'))
+                        box.set_alpha(0.5)
+                    
                     ax.set_xticks(range(len(labels)))
                     ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=8, fontfamily='Helvetica')
                     ax.set_title(f'Phân phối {feature.capitalize()}', fontsize=10, fontweight='bold', color='#2c3e50', fontfamily='Helvetica')
@@ -332,23 +340,22 @@ class StatisticsPopup:
                     ax.set_facecolor('#ffffff')
                     ax.grid(True, linestyle='--', alpha=0.7)
                 
-                if len(features) % 2 == 1:
-                    ax = axes[-1]
-                    ax.axis('off')
-            
-            # Scatter matrix
-            scatter_fig = plt.figure(figsize=(6, 6))
+                # Turn off unused subplot if any
+                if len(features) % 2 == 1 and len(features) > 1:
+                    axes[-1].axis('off')
+                        
+            scatter_axes = scatter_matrix(
+                df_clean[features],
+                hist_kwds={'bins': 20},
+                c=[colors.get(lbl, '#3498db') for lbl in df_clean['label']] if has_label else '#3498db',
+                alpha=0.6,
+                figsize=(6, 6)
+            )
+
+            scatter_fig = scatter_axes[0,0].get_figure()  # lấy figure gốc mà scatter_matrix tự tạo
             scatter_fig.patch.set_facecolor('#ecf0f1')
-            
-            # Explicitly create new axes for scatter_matrix to avoid artist reuse
-            scatter_matrix(df_clean[features], 
-                           hist_kwds={'bins': 20}, 
-                           c=[colors.get(lbl, '#3498db') for lbl in df_clean['label']] if has_label else '#3498db',
-                           alpha=0.6,
-                           figure=scatter_fig)
-            
             scatter_fig.tight_layout()
-            
+     
             # Use grid layout with provided chart_frame
             canvas_frame = tk.Frame(chart_frame, bg="#ecf0f1")
             canvas_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
@@ -356,9 +363,9 @@ class StatisticsPopup:
             chart_frame.columnconfigure(0, weight=1)
             
             if has_label:
-                canvas_widget = FigureCanvasTkAgg(fig, canvas_frame)
-                canvas_widget.draw()
-                canvas_widget.get_tk_widget().grid(row=0, column=0, sticky="nsew")
+                boxplot_canvas = FigureCanvasTkAgg(boxplot_fig, canvas_frame)
+                boxplot_canvas.draw()
+                boxplot_canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
                 canvas_frame.rowconfigure(0, weight=1)
                 canvas_frame.columnconfigure(0, weight=1)
             
@@ -370,7 +377,7 @@ class StatisticsPopup:
             print(f"Debug: Charts tab rendered - boxplot={has_label}, scatter_matrix=True")
             
             # Close figures to prevent memory leaks
-            plt.close(fig)
+            plt.close(boxplot_fig)
             plt.close(scatter_fig)
             print("Debug: Closed Matplotlib figures")
         
